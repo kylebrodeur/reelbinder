@@ -11,6 +11,8 @@ Open ReelBinder's provider connection controls and use the supported connection 
 
 Connection availability depends on your provider account, enabled APIs, permissions and model access. A connected account does not make every tool available.
 
+Google + Parallel research requires the Vertex AI API to be enabled on the Google Cloud project selected in your Google connection. Connect Parallel separately so research results can include citations.
+
 ## Review before running
 
 Before a request, confirm the selected Project context, reference media, prompt and output type. Image, composition, video and audio are separate capabilities and may have different connection requirements.
@@ -19,6 +21,6 @@ ReelBinder uses Google ADK for assistant workflows, Google model adapters for su
 
 ## If a request fails
 
-Read the reported availability or job status before submitting another request. A timeout can leave a provider operation unresolved, and another submission can create a second job. Preserve the operation information so the result can be reconciled.
+Read the reported availability or job status before submitting another request. If a job remains queued past the client timeout, keep its job ID and reconnect to check it. ReelBinder preserves stalled jobs and does not automatically submit a replacement.
 
 Disconnect services when you no longer need them. See [Architecture](/architecture) for the session and media-service boundary.
