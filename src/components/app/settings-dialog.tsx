@@ -177,7 +177,7 @@ export function SettingsDialog({
             <div className="space-y-2 border-b border-border pb-4 text-sm leading-relaxed text-muted-foreground">
               <p>
                 Your project autosaves in this browser. Export a ReelBinder project archive
-                (.slate.zip) from Project files to keep a project copy. Generated media uses
+                (.reelbinder.zip) from Project files to keep a project copy. Generated media uses
                 session-protected links.
               </p>
               <p>

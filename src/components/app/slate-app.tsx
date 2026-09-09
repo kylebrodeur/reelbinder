@@ -257,7 +257,7 @@ export function SlateApp() {
           else toast.success(`Boarded ${res.shots} beats from the script`);
           return;
         }
-        toast.error("Use a ReelBinder project archive (.slate.zip), .slate.md, Fountain, or JSON.");
+        toast.error("Use a ReelBinder project archive (.reelbinder.zip or .slate.zip), .slate.md, Fountain, or JSON.");
       } finally {
         finishRead();
       }
@@ -315,7 +315,7 @@ export function SlateApp() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={exportPack}>
-                    <Download /> Download project archive (.slate.zip)
+                    <Download /> Download project archive (.reelbinder.zip)
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={exportFountain}>
                     Export screenplay (.fountain)
@@ -400,7 +400,7 @@ export function SlateApp() {
           <input
             ref={importRef}
             type="file"
-            accept=".zip,.md,.slate.md,.jsonl,.fountain,.txt,.json,text/plain,application/json,application/zip"
+            accept=".reelbinder.zip,.slate.zip,.zip,.md,.slate.md,.jsonl,.fountain,.txt,.json,text/plain,application/json,application/zip"
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];

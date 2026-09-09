@@ -36,6 +36,12 @@ Provider connections are entered by each visitor at runtime. Do not place API ke
 
 ReelBinder preserves stable Slate-format identifiers for screenplay, lining, project snapshots, media provenance, and portable `.slate.zip` archives.
 
+## License and planning study
+
+ReelBinder software and original ReelBinder identity artwork are distributed under the MIT License. Third-party dependencies retain their own licenses and notices.
+
+The source-only Project at `public/demo/bounty-hunter-planning-study.slate.zip` contains screenplay, planning and reference material for evaluation and import use. It contains no generated takes or finished film. Rights are retained by Kyle Brodeur; screenplay by Bradley Weatherholt. The archive and its contents are not covered by the software MIT License, and no additional redistribution or adaptation rights are granted.
+
 ## Publication status
 
-This is a sanitized release candidate. Distribution remains pending an approved license and final credits.
+This public repository is the curated ReelBinder source release. Private development history, production records, credentials, provider records, contact sheets, notes, and film media are not included.

@@ -10,12 +10,10 @@ import { CinemaJobFailure, CinemaRequestFailure, getCinemaConnections, submitCin
 import { createProjectOpenAttempt, fetchDemoManifest, loadDemoPackWithReceipt, type DemoPackManifest } from "@/lib/demo-pack";
 import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedArchiveImportReceipt } from "@/lib/archive-import-receipt";
 import { parseFountain, toFountain } from "@/lib/fountain";
-import { createSampleProject } from "@/lib/sample-project";
 import { isSlateText } from "@/lib/slate-md";
 import { isZipFile, unpackSlateWithReceipt } from "@/lib/slate-pack";
 import { useSlate } from "@/lib/store";
 import type { Project, ScriptElement } from "@/lib/types";
-import { uid } from "@/lib/utils";
 
 type ScriptDraft = { title: string; logline: string; script: ScriptElement[] };
 const PENDING_DRAFT = "slate:pending-script-job";
@@ -124,11 +122,11 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
         (clip.sourceVideoUrl || clip.sourceFrameUrl || project.shots.find((shot) => shot.id === clip.shotId)?.videoUrl));
       if (openAttempt.current === attempt) finish(hasPicture ? "edit" : "script");
       const receipt = await receiptReady!;
-      toast.success("Film study opened as your own copy. Undo returns to your previous project.", {
+      toast.success("Bounty Hunter planning study opened as your own copy. Undo returns to your previous project.", {
         action: { label: "Download receipt", onClick: () => downloadArchiveImportReceipt(receipt) },
       });
     } catch (failure) {
-      if (applied) toast.error("The film study opened, but its import receipt could not be prepared.");
+      if (applied) toast.error("The planning study opened, but its import receipt could not be prepared.");
       else if (openAttempt.current === attempt && !attempt.signal.aborted)
         setError(failure instanceof Error ? failure.message : "Could not open the film study.");
     } finally {
@@ -169,7 +167,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
           action: { label: "Download receipt", onClick: () => downloadArchiveImportReceipt(receipt) },
         });
       } else {
-        if (!/\.(fountain|txt|md)$/i.test(file.name)) throw new Error("Choose a Fountain, text, Markdown or ReelBinder project archive (.slate.zip).");
+        if (!/\.(fountain|txt|md)$/i.test(file.name)) throw new Error("Choose a Fountain, text, Markdown or ReelBinder project archive (.reelbinder.zip or .slate.zip).");
         const text = await file.text();
         attempt.signal.throwIfAborted();
         if (openAttempt.current === attempt) setPages(text);
@@ -216,21 +214,19 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
     <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
       <DialogHeader><DialogTitle className="font-display text-3xl">Start a film</DialogTitle><DialogDescription>Return to a scene you know, bring your screenplay, or develop a new idea.</DialogDescription></DialogHeader>
       <div className="flex gap-1 rounded-md bg-secondary p-1" role="group" aria-label="How to start">
-        {([{ id: "demo", label: "Sample project", icon: Clapperboard }, { id: "import", label: "Import script", icon: FileUp }, { id: "idea", label: "From an idea", icon: PenLine }] as const).map((item) => <button type="button" key={item.id} disabled={working} aria-pressed={mode === item.id} onClick={() => { setMode(item.id); setError(""); }} className={`flex min-h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-sm px-2 text-xs focus-visible:outline-2 focus-visible:outline-steel ${mode === item.id ? "bg-card text-foreground" : "text-muted-foreground"}`}><item.icon className="hidden size-4 shrink-0 sm:block" />{item.label}</button>)}
+        {([{ id: "demo", label: "Start", icon: Clapperboard }, { id: "import", label: "Import script", icon: FileUp }, { id: "idea", label: "From an idea", icon: PenLine }] as const).map((item) => <button type="button" key={item.id} disabled={working} aria-pressed={mode === item.id} onClick={() => { setMode(item.id); setError(""); }} className={`flex min-h-10 min-w-0 flex-1 items-center justify-center gap-2 rounded-sm px-2 text-xs focus-visible:outline-2 focus-visible:outline-steel ${mode === item.id ? "bg-card text-foreground" : "text-muted-foreground"}`}><item.icon className="hidden size-4 shrink-0 sm:block" />{item.label}</button>)}
       </div>
-      {mode === "demo" && <div className="grid gap-4 py-3">
-        <div className="border-l-2 border-steel pl-4"><h3 className="font-display text-2xl">{demoManifest?.title ?? "ReelBinder Sample"}</h3><p className="mt-2 max-w-prose text-sm leading-relaxed text-muted-foreground">{demoManifest?.description ?? "Explore a clean screenplay workspace and overlapping coverage."}</p>{demoManifest && <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{demoManifest.credit}</p>}</div>
-        <p className="text-sm text-muted-foreground">Open the film study to review its saved picture edit and media. No key is needed to play or edit your copy; new generation uses your connected account.</p>
-        <Button disabled={working || checkingDemo} onClick={() => void openDemo()}>{opening ? <><Loader2 className="animate-spin" />Opening film study…</> : checkingDemo ? "Checking film study…" : demoManifest ? "Open film study" : "Check for film study"}</Button>
-        <div className="grid gap-2 border-t border-border pt-3"><p className="text-xs text-muted-foreground">The script example opens the entrance → coin → whiskey coverage plan for you to develop.</p><Button variant="outline" disabled={working} onClick={() => { useSlate.getState().replaceProject({ ...createSampleProject(), id: uid("proj"), target: "veo" }); finish(); toast.success("Script example opened. Undo returns to your previous project."); }}>Open script example</Button></div>
-        <Button variant="ghost" disabled={working} onClick={() => { useSlate.getState().newBoard({ target: "veo" }); finish(); }}>Start with a blank script</Button>
+      {mode === "demo" && <div className="grid gap-3 py-3">
+        <div className="grid gap-3 border-l-2 border-steel pl-4"><div><h3 className="font-display text-2xl">New blank project</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">Begin with an empty screenplay workspace and make every production choice yourself.</p></div><Button disabled={working} onClick={() => { useSlate.getState().newBoard(); finish(); }}>New blank project</Button></div>
+        <div className="grid gap-3 border-l-2 border-border pl-4"><div><h3 className="font-display text-2xl">Bounty Hunter planning study</h3><p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">{demoManifest?.description ?? "Open the approved screenplay and production planning as your own editable copy."}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Planning only: no finished film or accepted media is included.</p>{demoManifest && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{demoManifest.credit}</p>}</div><Button disabled={working || checkingDemo} onClick={() => void openDemo()}>{opening ? <><Loader2 className="animate-spin" />Opening planning study…</> : checkingDemo ? "Checking planning study…" : "Open Bounty Hunter planning study"}</Button></div>
+        <div className="grid gap-3 border-l-2 border-border pl-4" aria-disabled="true"><div><h3 className="font-display text-2xl">Open finished study</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">The cleaned accepted archive will be offered here after final review.</p></div><Button disabled>Coming after final review</Button></div>
       </div>}
       {mode === "import" && <div className="grid gap-3">
         <label className="grid gap-2 text-sm">Screenplay<Textarea rows={10} className="font-script leading-relaxed" placeholder={"INT. TAVERN - DAY\n\nA traveler pauses in the doorway."} value={pages} onChange={(event) => { setPages(event.target.value); setError(""); }} /></label>
         {preview && <p className="text-xs text-muted-foreground">Preview: {preview.elements.filter((element) => element.kind === "scene").length} scenes, {preview.elements.length} screenplay elements. Review formatting before opening.</p>}
         <div className="flex flex-wrap gap-2"><Button disabled={working || !pages.trim()} onClick={() => importText(pages)}>Open script</Button><Button variant="outline" disabled={working} onClick={() => fileRef.current?.click()}>Choose file</Button></div>
-        <p className="text-xs text-muted-foreground">Fountain, plain text, .slate.md, or a ReelBinder project archive (.slate.zip). An archive opens its saved production workspace; text is previewed here first.</p>
-        <input ref={fileRef} type="file" className="hidden" accept=".fountain,.txt,.md,.zip" onChange={(event) => { void onFile(event.target.files?.[0]); event.target.value = ""; }} />
+        <p className="text-xs text-muted-foreground">Fountain, plain text, .slate.md, or a ReelBinder project archive (.reelbinder.zip or .slate.zip). An archive opens its saved production workspace; text is previewed here first.</p>
+        <input ref={fileRef} type="file" className="hidden" accept=".fountain,.txt,.md,.reelbinder.zip,.slate.zip,.zip" onChange={(event) => { void onFile(event.target.files?.[0]); event.target.value = ""; }} />
       </div>}
       {mode === "idea" && <div className="grid gap-3">
         <div className="flex items-center justify-between gap-3"><p className="text-xs text-muted-foreground">Google Cloud drafts an editable screenplay.</p><ConnectionsControl /></div>

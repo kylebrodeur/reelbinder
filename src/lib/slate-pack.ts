@@ -993,7 +993,7 @@ export async function downloadSlatePack(project: Project) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${slugName(project.name)}.slate.zip`;
+  a.download = `${slugName(project.name)}.reelbinder.zip`;
   a.click();
   URL.revokeObjectURL(url);
 }

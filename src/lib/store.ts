@@ -181,20 +181,20 @@ function applyProject(project: Project, view: View = "script"): Partial<SlateSta
   };
 }
 
-const SAMPLE = reconcileProductionCatalog(synchronizeProductionDirections(createSampleProject()));
+const BLANK = withPrompts(createBlankProject());
 
 export const useSlate = create<SlateState>()(
   persist(
     (set, get) => ({
       hydrated: false,
-      project: SAMPLE,
-      selectedId: SAMPLE.shots[0]?.id ?? null,
-      selectedElementId: SAMPLE.script.find((e) => e.kind === "action")?.id ?? null,
-      selectedElementIds: SAMPLE.script.find((e) => e.kind === "action")
-        ? [SAMPLE.script.find((e) => e.kind === "action")!.id]
+      project: BLANK,
+      selectedId: BLANK.shots[0]?.id ?? null,
+      selectedElementId: BLANK.script.find((e) => e.kind === "action")?.id ?? null,
+      selectedElementIds: BLANK.script.find((e) => e.kind === "action")
+        ? [BLANK.script.find((e) => e.kind === "action")!.id]
         : [],
       view: "script",
-      issues: checkContinuity(SAMPLE),
+      issues: checkContinuity(BLANK),
       setHydrated: (v) => set({ hydrated: v }),
       setView: (view) => set({ view }),
       setTarget: (target) => set((s) => stamp({ ...s.project, target }, "Change target")),
@@ -700,16 +700,16 @@ export const useSlate = create<SlateState>()(
       migrate: (persisted) => {
         const p = persisted as Partial<SlateState> | undefined;
         const projectRaw = p?.project;
-        // A sample becomes the filmmaker's document once it has been saved.
-        // New demo content must never replace their persisted work by ID.
+        // Missing Project data starts blank. Persisted filmmaker data follows the
+        // restoration branch below and is never replaced by changing demo content.
         if (!projectRaw) {
           return {
-            project: SAMPLE,
-            selectedId: SAMPLE.shots[0]?.id ?? null,
+            project: BLANK,
+            selectedId: BLANK.shots[0]?.id ?? null,
             selectedElementId:
-              SAMPLE.script.find((e) => e.kind === "action")?.id ?? SAMPLE.script[0]?.id ?? null,
-            selectedElementIds: SAMPLE.script.find((e) => e.kind === "action")
-              ? [SAMPLE.script.find((e) => e.kind === "action")!.id]
+              BLANK.script.find((e) => e.kind === "action")?.id ?? BLANK.script[0]?.id ?? null,
+            selectedElementIds: BLANK.script.find((e) => e.kind === "action")
+              ? [BLANK.script.find((e) => e.kind === "action")!.id]
               : [],
             view: "script" as View,
           };
