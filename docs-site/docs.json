@@ -34,6 +34,7 @@
         "collapsible": false,
         "pages": [
           "projects-and-exports",
+          "presentation-project",
           "provider-connections"
         ]
       },
