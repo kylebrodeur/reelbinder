@@ -1,0 +1,21 @@
+# ReelBinder
+
+> ReelBinder is a browser-based filmmaking workspace for developing a screenplay into production planning, generated media, an editable cut, and a portable project archive.
+
+ReelBinder keeps screenplay text, coverage, shot planning, media provenance, and edit decisions together. Visitors connect their own supported services; credentials are session-owned and excluded from project archives. The public planning study contains source and planning material only, with separate rights outside the software MIT license.
+
+## Product
+
+- [ReelBinder Studio](https://studio.reelbinder.app/): Use the hosted filmmaking workspace.
+- [Planning Study Manifest](https://studio.reelbinder.app/demo/manifest.json): Review the sample description, rights, checksum, and download location.
+
+## Documentation
+
+- [Public Source Repository](https://github.com/kylebrodeur/reelbinder): Curated software source, local setup, architecture, and licensing.
+- [Project Overview](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/README.md): Product overview and development commands in Markdown.
+- [Project Format Contract](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/docs/slate-format-contract.md): Portable archive and interchange contract in Markdown.
+- [Credits and Rights](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/CREDITS.md): Software credits and the separate rights boundary for screenplay and media.
+
+## Optional
+
+- [Planning Study Notes](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/public/demo/README.md): Scope and intended use of the source-only sample.
