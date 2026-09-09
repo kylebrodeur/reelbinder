@@ -8,7 +8,7 @@ system-aware light/dark themes.
 
 ## Install and validate
 
-Use Node.js 25.5.0 and pnpm 12.3.4, matching this preview's validated environment.
+Use Node.js 22 and pnpm 12.3.4, matching the GitHub Pages workflow.
 
 ```sh
 pnpm install --frozen-lockfile

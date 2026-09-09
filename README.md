@@ -37,6 +37,10 @@ ReelBinder software and original ReelBinder identity artwork are distributed und
 
 Public product documentation lives in [`docs-site/`](docs-site/) and is published at [docs.reelbinder.app](https://docs.reelbinder.app). The Slate interchange reference is available at [`docs/slate-format-contract.md`](docs/slate-format-contract.md).
 
+## Public project downloads
+
+[The Bounty Hunter presentation-project page](https://docs.reelbinder.app/presentation-project/) lists the approved public starter planning archive, completed presentation Project, V07 film, hashes, and rights boundary. The direct source-only [planning study](https://storage.googleapis.com/reelbinder-public-downloads/starter/bounty-hunter-planning-study.slate.zip) contains screenplay, planning, and floor-plan reference material; the finished presentation Project and film are separately described there.
+
 ## Planning study and rights
 
 The source-only Project at [`public/demo/bounty-hunter-planning-study.slate.zip`](public/demo/bounty-hunter-planning-study.slate.zip) contains screenplay, planning, and reference material for evaluation and import use. It contains no generated takes or finished film.
