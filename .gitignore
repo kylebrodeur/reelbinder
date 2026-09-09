@@ -1,0 +1,34 @@
+node_modules/
+.project_id
+.github_repo
+.env
+.env.*
+
+# Generated output and local development/runtime state
+.vercel/
+.output/
+.tanstack/
+dist/
+.node_modules.lock
+/.runtime/
+.omp/*
+!.omp/config.yml
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.DS_Store
+backend/.runtime
+backend/data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+encryption.key
+# Private recovery evidence, film assets, and sibling workspace links
+/recovery/
+/docs/recovery/
+/local-workspace/
+/public/demo/
+/artifacts/
+/attachments/
+/screenshots/

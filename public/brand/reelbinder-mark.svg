@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">ReelBinder layered mark on dark</title>
+  <desc id="desc">An offset back folio, a paper cover with a clean filmstrip, and a green spine with three binder-punch knockouts.</desc>
+  <defs>
+    <mask id="front-cut">
+      <rect width="512" height="512" fill="white"/>
+      <circle cx="96" cy="184" r="22" fill="black"/>
+      <circle cx="96" cy="272" r="22" fill="black"/>
+      <circle cx="96" cy="360" r="22" fill="black"/>
+    </mask>
+  </defs>
+  <rect x="136" y="80" width="280" height="320" fill="#596474"/>
+  <rect x="96" y="112" width="280" height="320" fill="#F3EFE6" mask="url(#front-cut)"/>
+  <rect x="96" y="112" width="72" height="320" fill="#5A9E80" mask="url(#front-cut)"/>
+
+  <g transform="translate(55.2 54.4) scale(0.8)">
+    <rect x="204" y="188" width="144" height="168" fill="#0D0E11"/>
+    <rect x="230" y="206" width="92" height="48" fill="#596474"/>
+    <rect x="230" y="290" width="92" height="48" fill="#596474"/>
+    <path d="M210 188h10v5h-10zM332 188h10v5h-10zM210 204h10v10h-10zM332 204h10v10h-10zM210 225h10v10h-10zM332 225h10v10h-10zM210 246h10v10h-10zM332 246h10v10h-10zM210 267h10v10h-10zM332 267h10v10h-10zM210 288h10v10h-10zM332 288h10v10h-10zM210 309h10v10h-10zM332 309h10v10h-10zM210 330h10v10h-10zM332 330h10v10h-10zM210 351h10v5h-10zM332 351h10v5h-10z" fill="#F3EFE6"/>
+  </g>
+</svg>

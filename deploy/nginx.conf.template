@@ -1,0 +1,71 @@
+# These edge limits supplement, not replace, application job/session quotas.
+limit_req_zone $binary_remote_addr zone=api:10m rate=5r/s;
+limit_req_zone $binary_remote_addr zone=jobs:10m rate=6r/m;
+limit_conn_zone $binary_remote_addr zone=connections:10m;
+
+server {
+    listen 80;
+    server_name ${SLATE_DOMAIN};
+    return 301 https://${SLATE_DOMAIN}$request_uri;
+}
+server {
+    listen 443 ssl;
+    server_name ${SLATE_DOMAIN};
+    ssl_certificate /etc/nginx/certs/fullchain.pem;
+    ssl_certificate_key /etc/nginx/certs/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    server_tokens off;
+    client_max_body_size 2m;
+    client_body_timeout 15s;
+    send_timeout 30s;
+    limit_req_status 429;
+    limit_conn_status 429;
+    limit_conn connections 20;
+    # Omit access logs: no visitor/session identifiers or request URLs in routine logs.
+    access_log off;
+    error_log /var/log/nginx/error.log warn;
+
+    location = /api/cinema/assets/import {
+        # One media entry, not the complete ZIP: base64(128 MiB) + 128 KiB provenance + 4096.
+        client_max_body_size 179092140;
+        client_body_timeout 120s;
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host ${SLATE_DOMAIN};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        # HTTP/1.1 also avoids buffering chunked client uploads before forwarding.
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 120s;
+        add_header Cache-Control "no-store" always;
+    }
+    location = /api/cinema/jobs {
+        limit_req zone=jobs burst=2 nodelay;
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host ${SLATE_DOMAIN};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 30s;
+    }
+    location /api/cinema/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host ${SLATE_DOMAIN};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 30s;
+        proxy_buffering off;
+        add_header Cache-Control "no-store" always;
+    }
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host ${SLATE_DOMAIN};
+        proxy_set_header X-Forwarded-Proto https;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_read_timeout 30s;
+    }
+}

@@ -1,0 +1,17 @@
+[project]
+name = "slate-cinema-backend"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "cryptography",
+    "google-adk[mcp]",
+    "google-genai",
+    "httpx",
+    "pillow>=12.3.0",
+]
+[dependency-groups]
+dev = ["pytest"]
+[tool.pytest.ini_options]
+pythonpath = ["."]
