@@ -32,3 +32,7 @@ ReelBinder exports portable .reelbinder.zip project archives and continues to ac
 ## License
 
 ReelBinder software and original ReelBinder identity artwork are distributed under the MIT License. Third-party dependencies retain their own licenses and notices.
+
+## Documentation
+
+Public product documentation lives in [`docs-site/`](docs-site/) and is published at [docs.reelbinder.app](https://docs.reelbinder.app). The Slate interchange reference is available at [`docs/slate-format-contract.md`](docs/slate-format-contract.md).

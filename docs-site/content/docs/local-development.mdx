@@ -1,0 +1,34 @@
+---
+title: Run locally
+description: Start the public ReelBinder frontend from source.
+---
+
+Use Node 22 and npm. Start from a ReelBinder source checkout and use its committed lockfile.
+
+## Start the editor
+
+From the repository root:
+
+```sh
+npm ci
+npm run dev
+```
+
+Open `http://localhost:8080`. The public source includes the editor and its thin same-origin middleware, but not the Cinema API service behind it. Script authoring, planning, editing, local persistence, and project interchange remain available in the frontend.
+
+Provider-backed generation and rendering require a compatible service configured with `CINEMA_BACKEND_URL`. Use [studio.reelbinder.app](https://studio.reelbinder.app) for the complete hosted product.
+
+## Run checks
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npm run lint
+```
+
+Run production builds in an isolated environment without unrelated database credentials. The frontend build command includes a database migration step and safely skips it when `DATABASE_URL` is absent.
+
+## Connection safety
+
+Each visitor supplies their own supported provider connections at runtime. Application accounts and session-scoped provider connections are different layers. Keep credentials out of frontend-exposed variables, source files, screenshots, logs, and Project archives.

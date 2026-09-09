@@ -1,0 +1,52 @@
+---
+title: Architecture
+description: How the editor, Cinema service and providers work together.
+---
+
+ReelBinder has a browser editor and a same-origin media-service boundary. The editor owns creative state; the hosted Cinema service manages session-scoped connections, media and jobs.
+
+<div className="reelbinder-diagram">
+
+```mermaid title="Workspace and service boundaries"
+flowchart TB
+    accTitle: ReelBinder workspace and service boundaries
+    accDescr: The browser workspace holds Project state. Media requests pass through the same-origin gateway to the session-scoped Cinema service. Cinema reads and writes session data, media and jobs. Explicit requests use the visitor's connections to Google AI or optional Parallel research.
+    workspace["Browser workspace<br/>Project state"] -->|Media requests| gateway["Same-origin gateway"]
+    gateway --> cinema["Session-scoped Cinema"]
+    cinema <-->|Read and write| data[("Session data<br/>Media and jobs")]
+    cinema -->|Explicit requests| connections["Visitor connections"]
+    connections --> google["Google AI"]
+    connections --> parallel["Parallel Search<br/>Optional research"]
+```
+
+</div>
+
+The browser keeps the editable Project; Cinema manages session data, media and jobs behind the gateway. Each visitor connects their own services. Requests do not fall back to the server owner's credentials. Parallel supports optional research, while FFmpeg assembles picture and sound without an AI connection.
+
+| Layer | Responsibilities |
+|---|---|
+| React and TanStack Start | Script, Stage, Frame, playback, editing and user controls |
+| Zustand Project state | Authored edits, persistence, undo and Project replacement |
+| Same-origin Cinema gateway | Routes editor requests to the media service |
+| Hosted Cinema service (not included here) | Session isolation, connection expiry, job admission, assets and rendering |
+| Google ADK and provider adapters | Assistant workflows and explicitly requested generation |
+| Parallel Search | Research used by supported assistant workflows |
+| FFmpeg | Picture-and-sound render assembly |
+
+## Keep creative state connected
+
+The Project holds screenplay elements, setups, catalog identities, media versions and edit timelines. Stable identifiers connect those artifacts without treating them as interchangeable.
+
+Coverage describes the story span a setup can shoot. Timeline clips describe the ordered source excerpts used in the film. Catalog identities are shared while scoped notes describe local exceptions.
+
+## Treat media as data
+
+Media records retain byte sizes, checksums and lineage. Portable imports verify embedded bytes and restore them into a receiving session. Session-local references can change without relabeling historical provider operations.
+
+Generation and render jobs record their state and link completed requests to media outputs. Use that state to track a request, then review and keep its output with your Project.
+
+## Separate appearance from film
+
+Application appearance preferences belong to the editor, not the screenplay or exported film Project. This keeps a change in theme from changing the creative artifact.
+
+For interchange details, read the [Project format overview](/slate-format).

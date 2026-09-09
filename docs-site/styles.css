@@ -1,0 +1,38 @@
+/* Keep Mermaid's built-in SVG rendering aligned with Shiso's data-theme tokens.
+   Shiso 1.13.0's Mermaid theme observer watches a .dark class instead. */
+.slate-diagram {
+  min-width: 0;
+}
+
+.slate-diagram svg {
+  font-family: var(--font-sans) !important;
+}
+
+@media (max-width: 640px) {
+  .slate-diagram svg {
+    min-width: 28rem;
+  }
+}
+
+.slate-diagram svg .node :is(rect, circle, ellipse, polygon, path) {
+  fill: var(--muted) !important;
+  stroke: var(--muted-foreground) !important;
+}
+
+.slate-diagram svg :is(.nodeLabel, .edgeLabel, .label, text, tspan) {
+  color: var(--foreground) !important;
+  fill: var(--foreground) !important;
+}
+
+.slate-diagram svg :is(.edgeLabel, .edgeLabel p, .labelBkg) {
+  background-color: var(--card) !important;
+}
+
+.slate-diagram svg :is(.flowchart-link, .edgePath path) {
+  stroke: var(--muted-foreground) !important;
+}
+
+.slate-diagram svg marker path {
+  fill: var(--muted-foreground) !important;
+  stroke: var(--muted-foreground) !important;
+}

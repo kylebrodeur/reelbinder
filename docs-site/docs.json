@@ -1,0 +1,67 @@
+{
+  "$schema": "./node_modules/@umami/shiso/docs.schema.json",
+  "theme": "shiso",
+  "name": "ReelBinder Docs",
+  "description": "Learn how to use ReelBinder to turn screenplays into planned, reviewable video work.",
+  "logo": {
+    "light": "/logo.svg",
+    "dark": "/logo.svg",
+    "href": "https://reelbinder.app",
+    "invert": false
+  },
+  "favicon": "/logo.svg",
+  "contextual": {
+    "options": [
+      "copy",
+      "view"
+    ]
+  },
+  "navigation": {
+    "groups": [
+      {
+        "group": "Start here",
+        "collapsible": false,
+        "pages": [
+          {
+            "page": "index",
+            "title": "Overview"
+          },
+          "workflow"
+        ]
+      },
+      {
+        "group": "Guides",
+        "collapsible": false,
+        "pages": [
+          "projects-and-exports",
+          "provider-connections"
+        ]
+      },
+      {
+        "group": "Developers",
+        "collapsible": false,
+        "pages": [
+          "local-development",
+          "architecture",
+          {
+            "page": "slate-format",
+            "title": "Project format"
+          }
+        ]
+      }
+    ]
+  },
+  "appearance": {
+    "default": "system",
+    "strict": false
+  },
+  "colors": {
+    "primary": "#52525b",
+    "light": "#d4d4d8",
+    "dark": "#3f3f46"
+  },
+  "search": {
+    "provider": "local",
+    "prompt": "Search ReelBinder Docs"
+  }
+}

@@ -1,0 +1,24 @@
+---
+title: Provider connections
+description: Connect generation and research services explicitly.
+---
+
+ReelBinder separates the editor from generation services. You can work with existing scripts, Projects and media without starting a model request. New generation and research need the relevant connection and configured capability.
+
+## Connect your own services
+
+Open ReelBinder's provider connection controls and use the supported connection flow for your deployment. Confirm the project, region and model where those options are shown. Each visitor supplies their own connection; access to the app is not permission to use another person's provider credentials.
+
+Connection availability depends on your provider account, enabled APIs, permissions and model access. A connected account does not make every tool available.
+
+## Review before running
+
+Before a request, confirm the selected Project context, reference media, prompt and output type. Image, composition, video and audio are separate capabilities and may have different connection requirements.
+
+ReelBinder uses Google ADK for assistant workflows, Google model adapters for supported generation, and Parallel Search for research. Research citations should point to sources returned by the research service; an AI observation still needs your review.
+
+## If a request fails
+
+Read the reported availability or job status before submitting another request. A timeout can leave a provider operation unresolved, and another submission can create a second job. Preserve the operation information so the result can be reconciled.
+
+Disconnect services when you no longer need them. See [Architecture](/architecture) for the session and media-service boundary.
