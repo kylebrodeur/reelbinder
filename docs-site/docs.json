@@ -46,7 +46,14 @@
           {
             "page": "slate-format",
             "title": "Project format"
-          }
+          },
+          "deployment",
+          {
+            "page": "deploy-google-cloud",
+            "title": "Google Cloud VM"
+          },
+          "deploy-cloudflare",
+          "deployment-handoff"
         ]
       }
     ]

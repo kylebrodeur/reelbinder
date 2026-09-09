@@ -1,0 +1,101 @@
+---
+title: Deployment handoff
+description: A concise, reusable receipt for deployment operators and automation agents.
+---
+
+Copy this template into a release-specific receipt. Fill every applicable field with evidence from the deployment; delete unused fields rather than guessing.
+
+````markdown
+# Deployment handoff
+
+## Release identity
+
+- Status: prepared | built | deployed | hosted-verified | rolled-back
+- Source repository: <public-or-private-repository-name>
+- Source revision: <full-commit>
+- Source tree state: clean | explain
+- Build command: <exact-command>
+- Build timestamp: <UTC timestamp>
+- Frontend image: <registry-path>@sha256:<digest>
+- Service image: <registry-path>@sha256:<digest>
+- Previous frontend image: <registry-path>@sha256:<digest>
+- Previous service image: <registry-path>@sha256:<digest>
+
+## Infrastructure identity
+
+- Cloud project reference: <non-secret-project-reference>
+- Region and zone: <region> / <zone>
+- VM or runtime identity: <name-and-provider-id>
+- Persistent data location: <disk-or-volume-name, never local source paths>
+- Gateway container: <container-id-and-image-digest>
+- Frontend container: <container-id-and-image-digest>
+- Service container: <container-id-and-image-digest>
+- Worker name and version: <name> / <version-id>
+- DNS mode by hostname: <hostname>: proxied | DNS-only | Worker
+- Certificate issuer and validity: <issuer> / <not-before> / <not-after>
+
+## Credential boundary
+
+- Visitor credentials required: yes | no
+- Owner credential fallback present: no
+- Runtime secret references: <names-or-secret-manager-paths only>
+- Secret values copied into this receipt: no
+- Public client bundle checked for server secrets: yes | no | not-applicable
+
+## Commands run
+
+```text
+<commands with secret values and private tokens omitted>
+```
+
+## Build and deployment results
+
+- Dependency install: pass | fail | not-run
+- Type check: pass | fail | not-run
+- Test suite: pass | fail | not-run
+- Production build: pass | fail | not-run
+- Documentation build: pass | fail | not-run
+- Deployment command: pass | fail
+- Active release matches recorded identity: yes | no
+
+## Hosted checks
+
+| Check | URL | Result | Evidence timestamp |
+| --- | --- | --- | --- |
+| Landing HTTPS | <url> | pass | <UTC> |
+| Signed-out app shell | <url> | pass | <UTC> |
+| Same-origin health | <url> | pass | <UTC> |
+| Representative JavaScript | <url> | pass | <UTC> |
+| Representative CSS/font/image | <url> | pass | <UTC> |
+| Documentation | <url> | pass | <UTC> |
+| Archive upload boundary | <url-and-size-without-user-data> | pass | <UTC> |
+
+## Rollback
+
+- Trigger: <observable condition>
+- Previous known-good identities: <digests-and-version-ids>
+- Origin rollback command: <exact-command>
+- Worker rollback command: <exact-command-or-not-applicable>
+- Data compatibility note: <none-or-specific-warning>
+
+## Open blockers
+
+- <smallest precise blocker and owner>
+
+## Receiver
+
+- Next action: <one concrete action>
+- Receiver: <role, not a private email address>
+- Handoff timestamp: <UTC timestamp>
+````
+
+## Interpretation
+
+Use status words narrowly:
+
+- **Built** means the production artifact was produced from the recorded source.
+- **Deployed** means the recorded artifact is active on the target infrastructure.
+- **Hosted-verified** means an external client passed the listed HTTPS and behavior checks.
+- Creative review, rights approval, and submission acceptance are separate decisions and should not be inferred from technical checks.
+
+If an operator cannot supply an exact identity or check, mark it `not-run` or open a blocker. Do not replace missing evidence with an assumption.

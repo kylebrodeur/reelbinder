@@ -1,0 +1,102 @@
+---
+title: Cloudflare template
+description: A reusable Worker, DNS, TLS, and routing pattern for a ReelBinder deployment.
+---
+
+Cloudflare can serve a lightweight landing page at the apex domain while a separate application hostname reaches the hosted ReelBinder stack. Keep the Worker and account-specific configuration private if they are not part of the public product source.
+
+## 1. Choose each hostname's role
+
+Document one role for every public hostname:
+
+| Example hostname | Role | Typical routing |
+| --- | --- | --- |
+| `example.com` | Landing page | Worker Custom Domain |
+| `studio.example.com` | ReelBinder application and same-origin API | Proxied DNS or DNS-only origin |
+| `docs.example.com` | Product documentation | Pages or another static host |
+
+A Worker [Custom Domain](https://developers.cloudflare.com/workers/configuration/routing/custom-domains/) makes the Worker the origin and lets Cloudflare create the required DNS record and certificate.
+
+For the application hostname, make an explicit choice:
+
+- **Proxied:** Cloudflare sits in front of the origin and can provide edge TLS, caching, traffic controls, and analytics. Check current request-size and timeout limits against the application's largest supported archive and media operations.
+- **DNS-only:** visitors connect directly to the origin. This avoids HTTP proxy limits, but the origin address is public and Cloudflare's proxy protections no longer apply. The origin must present a publicly trusted certificate for the hostname.
+
+Cloudflare's [proxy status documentation](https://developers.cloudflare.com/dns/proxy-status/) describes the current behavior. Do not use a Cloudflare Origin CA certificate for a DNS-only hostname because browsers connecting directly do not trust it.
+
+## 2. Keep Worker configuration reproducible
+
+Use a checked-in, sanitized Wrangler configuration as the source of truth. Replace the reserved example domain and date:
+
+```jsonc
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "replace-with-worker-name",
+  "main": "src/index.ts",
+  "compatibility_date": "YYYY-MM-DD",
+  "workers_dev": false,
+  "routes": [
+    {
+      "pattern": "example.com",
+      "custom_domain": true
+    }
+  ]
+}
+```
+
+Before deployment, confirm the active identity and inspect the generated bundle:
+
+```bash
+npx wrangler whoami
+npx wrangler deploy --dry-run
+npx wrangler deploy
+npx wrangler versions list
+```
+
+Record the returned Worker version and deployment identity. Cloudflare documents current command behavior in the [Wrangler command reference](https://developers.cloudflare.com/workers/wrangler/commands/workers/) and recommends keeping configuration in the project rather than relying on dashboard-only edits.
+
+If the Worker needs a secret, declare only its name in configuration and enter its value interactively:
+
+```bash
+npx wrangler secret put SECRET_NAME
+```
+
+Never pass a secret value as a command argument or include it in a deployment receipt. See [Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/).
+
+## 3. Configure the application hostname
+
+For a DNS-only application origin:
+
+1. Create an `A`, `AAAA`, or `CNAME` record for `studio.example.com` that reaches the origin.
+2. Set the record to DNS-only.
+3. Configure the origin gateway to obtain and renew a publicly trusted certificate for that exact hostname.
+4. Allow inbound TCP 80 and 443 as required by the selected certificate challenge and application traffic.
+5. Keep the service container private behind the origin gateway.
+
+For a proxied origin, use Full (strict) TLS with a valid origin certificate, review caching so authenticated and API responses are not cached, and confirm the largest real upload through the proxy.
+
+Start bot and traffic controls permissively unless the service is already under abuse. Apply narrow limits to paid or compute-heavy API operations before broad browser challenges that could block ordinary signed-out use.
+
+## 4. Verify from a clean client
+
+```bash
+curl --fail --show-error --silent "https://example.com/" >/dev/null
+curl --fail --show-error --silent "https://studio.example.com/" >/dev/null
+curl --fail --show-error --silent \
+  "https://studio.example.com/api/cinema/health" >/dev/null
+curl --fail --show-error --silent "https://docs.example.com/" >/dev/null
+```
+
+Then verify the signed-out application shell in a clean browser session, its same-origin health request, representative static assets, expected landing-page links, and one archive upload near the supported size boundary.
+
+Record DNS proxy mode, certificate issuer and validity window, Worker version, origin release identity, exact URLs, and timestamp in the [deployment handoff](/deployment-handoff).
+
+## Roll back
+
+Restore the prior origin image digests independently from the Worker. For the Worker, choose a previously recorded version and run:
+
+```bash
+npx wrangler rollback PREVIOUS_VERSION_ID
+```
+
+Cloudflare documents rollback behavior and limitations in [Workers rollbacks](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/). Repeat all HTTPS, health, asset, and link checks after rollback.

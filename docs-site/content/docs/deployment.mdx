@@ -1,0 +1,28 @@
+---
+title: Deployment patterns
+description: Public, provider-neutral operating patterns for hosting the ReelBinder frontend and a compatible Cinema service.
+---
+
+The public repository contains the ReelBinder frontend. Hosted generation also needs a compatible Cinema service behind the frontend's same-origin `/api/cinema/*` gateway. The service source, production manifests, account configuration, and secret values are intentionally not included.
+
+## Choose the deployment shape
+
+Use one of these patterns as a starting point, then replace every example value before running a command:
+
+- [Google Cloud VM template](/deploy-google-cloud): digest-pinned containers, a persistent data disk, an HTTPS gateway, and rollback by image digest.
+- [Cloudflare template](/deploy-cloudflare): a Worker landing page or routing layer, custom domains, and an explicit proxied-versus-DNS-only decision for the application hostname.
+- [Deployment handoff](/deployment-handoff): the small evidence packet another operator or automation agent needs to reproduce, verify, or roll back a release.
+
+## Release contract
+
+A deployment is ready to hand off only when the receipt records:
+
+1. The exact source revision and clean build command.
+2. Immutable frontend and service image digests.
+3. The active VM, container, and Worker version identities.
+4. HTTPS checks for the landing page, signed-out application shell, same-origin health route, and representative assets.
+5. The previous known-good identities and rollback commands.
+
+Record secret names or secret-manager references only. Never put secret values, browser cookies, provider keys, account IDs, private project text, or local machine paths in a public receipt.
+
+These templates are operating guidance, not a hosted service guarantee. Adapt IAM, backups, observability, capacity, and retention to the deployment's real risk and traffic.

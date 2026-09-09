@@ -1,0 +1,162 @@
+---
+title: Google Cloud VM template
+description: A reusable Compute Engine and Docker Compose pattern for a ReelBinder-compatible deployment.
+---
+
+This pattern runs an HTTPS gateway, the public ReelBinder frontend, and a separately supplied compatible Cinema service on one Compute Engine VM. Only the gateway publishes host ports. Project data lives on a persistent disk rather than inside a container.
+
+## 1. Set deployment variables
+
+Use values owned by your deployment. Do not paste credentials into shell history.
+
+```bash
+export GCP_PROJECT_ID="replace-me"
+export GCP_REGION="replace-me"
+export GCP_ZONE="replace-me"
+export REGISTRY_NAME="replace-me"
+export VM_NAME="replace-me"
+export DATA_DISK_NAME="replace-me"
+export APP_HOSTNAME="studio.example.com"
+export SOURCE_REVISION="full-source-commit"
+```
+
+Authenticate with the Google Cloud CLI using your normal operator identity, then select the project:
+
+```bash
+gcloud auth list
+gcloud config set project "$GCP_PROJECT_ID"
+gcloud services enable compute.googleapis.com artifactregistry.googleapis.com
+```
+
+Use least-privilege IAM for the build publisher and VM runtime identity. The VM needs read access to the selected Artifact Registry repository, not write access.
+
+## 2. Publish immutable images
+
+Create the repository once, configure Docker authentication, and push images tagged with the source revision:
+
+```bash
+gcloud artifacts repositories create "$REGISTRY_NAME" \
+  --repository-format=docker \
+  --location="$GCP_REGION"
+
+gcloud auth configure-docker "$GCP_REGION-docker.pkg.dev"
+
+docker tag reelbinder-frontend:reviewed \
+  "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$REGISTRY_NAME/reelbinder-frontend:$SOURCE_REVISION"
+docker push \
+  "$GCP_REGION-docker.pkg.dev/$GCP_PROJECT_ID/$REGISTRY_NAME/reelbinder-frontend:$SOURCE_REVISION"
+```
+
+Repeat the tag and push for the compatible service image. Resolve and record both complete `sha256` digests. Production Compose should reference digests, not mutable tags.
+
+Google documents the current Artifact Registry image naming and authentication flow in [Push and pull images](https://cloud.google.com/artifact-registry/docs/docker/pushing-and-pulling).
+
+## 3. Create compute and persistent storage
+
+Create the VM and a zonal disk in the same zone. A general-purpose Linux image with Docker and the Compose plugin installed is sufficient.
+
+```bash
+gcloud compute disks create "$DATA_DISK_NAME" \
+  --zone="$GCP_ZONE" \
+  --size="replace-me" \
+  --type="pd-balanced"
+
+gcloud compute instances create "$VM_NAME" \
+  --zone="$GCP_ZONE" \
+  --machine-type="replace-me" \
+  --boot-disk-size="replace-me" \
+  --disk="name=$DATA_DISK_NAME,device-name=reelbinder-data,mode=rw,boot=no"
+```
+
+On the VM, format only a confirmed blank disk, mount it at a stable location, and add it to `/etc/fstab` by filesystem UUID. Google maintains the destructive-step warnings and current commands in [Format and mount a non-boot disk](https://cloud.google.com/compute/docs/disks/format-mount-disk-linux).
+
+Use a layout such as:
+
+```text
+/srv/reelbinder/
+  compose.yaml
+  Caddyfile
+  runtime.env
+/mnt/disks/reelbinder-data/
+  projects/
+  assets/
+  database/
+```
+
+Set `runtime.env` to mode `0600`. Store only runtime configuration there. Retrieve secrets through a secret manager or an interactive operator step; do not put values in source control, command arguments, screenshots, or the handoff.
+
+## 4. Compose topology
+
+The following is a topology template, not a drop-in production manifest:
+
+```yaml
+services:
+  gateway:
+    image: "${GATEWAY_IMAGE_DIGEST}"
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway_data:/data
+    depends_on:
+      frontend:
+        condition: service_healthy
+
+  frontend:
+    image: "${FRONTEND_IMAGE_DIGEST}"
+    restart: unless-stopped
+    env_file: runtime.env
+    expose:
+      - "3000"
+    depends_on:
+      cinema:
+        condition: service_healthy
+
+  cinema:
+    image: "${CINEMA_IMAGE_DIGEST}"
+    restart: unless-stopped
+    env_file: runtime.env
+    expose:
+      - "8000"
+    volumes:
+      - /mnt/disks/reelbinder-data:/var/lib/reelbinder
+
+volumes:
+  gateway_data:
+```
+
+The gateway should terminate TLS and forward application traffic to `frontend:3000`. The frontend's same-origin middleware should reach `cinema:8000` on the private Compose network. Do not publish the service port to the internet.
+
+## 5. Deploy and verify
+
+```bash
+docker compose config --quiet
+docker compose pull
+docker compose up -d
+docker compose ps
+```
+
+Verify from outside the VM:
+
+```bash
+curl --fail --show-error --silent "https://$APP_HOSTNAME/" >/dev/null
+curl --fail --show-error --silent \
+  "https://$APP_HOSTNAME/api/cinema/health" >/dev/null
+```
+
+Also load the signed-out application in a clean browser session and confirm that its JavaScript, CSS, fonts, and brand assets load without mixed-content or cross-origin errors.
+
+Record the source revision, image digests, VM identity, active container IDs, health response, checked URLs, and timestamp in the [deployment handoff](/deployment-handoff).
+
+## Roll back
+
+Keep the previous digest-pinned environment file. To roll back, restore those exact image digests, then run:
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+Repeat the external HTTPS and health checks. A rollback does not reverse data-format changes; snapshot the persistent disk before a release that changes stored data.
