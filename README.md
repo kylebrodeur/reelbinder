@@ -36,3 +36,13 @@ ReelBinder software and original ReelBinder identity artwork are distributed und
 ## Documentation
 
 Public product documentation lives in [`docs-site/`](docs-site/) and is published at [docs.reelbinder.app](https://docs.reelbinder.app). The Slate interchange reference is available at [`docs/slate-format-contract.md`](docs/slate-format-contract.md).
+
+## Planning study and rights
+
+The source-only Project at [`public/demo/bounty-hunter-planning-study.slate.zip`](public/demo/bounty-hunter-planning-study.slate.zip) contains screenplay, planning, and reference material for evaluation and import use. It contains no generated takes or finished film.
+
+Rights are retained by Kyle Brodeur; screenplay by Bradley Weatherholt. The archive and its contents are not covered by the software MIT License, and no additional redistribution or adaptation rights are granted. See [`CREDITS.md`](CREDITS.md).
+
+## Publication scope
+
+This is a curated public source release. Hosted service code, deployment infrastructure, private development history, production records, credentials, provider records, contact sheets, notes, and film media are not included.

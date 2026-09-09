@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "title": "The Bounty Hunter: planning study",
+  "description": "A source-only screenplay and production planning study with 14 setups. It contains no generated takes or finished film.",
+  "credit": "Rights retained by Kyle Brodeur. Screenplay by Bradley Weatherholt. This sample is provided for evaluation and import use only, outside the software MIT license.",
+  "pack": {
+    "url": "/demo/bounty-hunter-planning-study.slate.zip",
+    "sha256": "330672c69f5f5277569061afc71b0498d10a4460cd8f8e972819afa25b09e836",
+    "byteSize": 284939
+  }
+}
