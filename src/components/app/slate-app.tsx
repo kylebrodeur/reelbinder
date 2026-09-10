@@ -7,7 +7,6 @@ import {
   FileText,
   Layers,
   Pencil,
-  Play,
   Plus,
   Settings,
   Upload,
@@ -23,6 +22,7 @@ import { ProductionDrawer, type ProdTab } from "@/components/app/production-draw
 import { ScriptView } from "@/components/app/script-view";
 import { SettingsDialog } from "@/components/app/settings-dialog";
 import { StageView } from "@/components/app/stage-view";
+import { PortableImportDialog } from "@/components/app/portable-import-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,7 +36,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { isFountainText, toFountain } from "@/lib/fountain";
 import { createProjectOpenAttempt } from "@/lib/demo-pack";
 import { sequencePrompt } from "@/lib/prompts";
-import { getPublicDemoUrl } from "@/lib/public-demo";
 import { downloadSlatePack, isZipFile, unpackSlateWithReceipt } from "@/lib/slate-pack";
 import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedArchiveImportReceipt } from "@/lib/archive-import-receipt";
 import { isSlateText } from "@/lib/slate-md";
@@ -48,7 +47,6 @@ import type { Project, View } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export function SlateApp() {
-  const publicDemoUrl = getPublicDemoUrl();
   const project = useSlate((s) => s.project);
   const view = useSlate((s) => s.view);
   const setView = useSlate((s) => s.setView);
@@ -64,6 +62,7 @@ export function SlateApp() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [prodOpen, setProdOpen] = useState(false);
   const [prodTab, setProdTab] = useState<ProdTab>("originals");
+  const [portableImportOpen, setPortableImportOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const activeImport = useRef<Pick<ReturnType<typeof createProjectOpenAttempt>, "signal" | "cancel"> | null>(null);
 
@@ -313,8 +312,8 @@ export function SlateApp() {
                   <DropdownMenuItem onClick={() => setNewOpen(true)}>
                     <Plus /> New film
                   </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => importRef.current?.click()}>
-                    <Upload /> Open script or project archive
+                  <DropdownMenuItem onClick={() => setPortableImportOpen(true)}>
+                    <Upload /> Import from device or link
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={exportPack}>
@@ -370,20 +369,6 @@ export function SlateApp() {
 
             {/* Right: Tools & Settings */}
             <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 min-[540px]:order-2 sm:gap-1.5 lg:order-none lg:shrink-0 lg:flex-nowrap">
-              {publicDemoUrl ? (
-                <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs hover:text-foreground" asChild>
-                  <a
-                    href={publicDemoUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="Watch ReelBinder walkthrough"
-                    title="Watch walkthrough"
-                  >
-                    <Play className="size-3.5 text-steel" />
-                    <span className="hidden md:inline">Walkthrough</span>
-                  </a>
-                </Button>
-              ) : null}
               <Button
                 variant="ghost"
                 size="sm"
@@ -438,6 +423,10 @@ export function SlateApp() {
         </div>
         <CoverageDock />
         <FilmEntryDialog open={newOpen} onOpenChange={setNewOpen} />
+        <PortableImportDialog
+          open={portableImportOpen}
+          onOpenChange={setPortableImportOpen}
+        />
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}

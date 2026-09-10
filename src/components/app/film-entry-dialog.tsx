@@ -12,6 +12,7 @@ import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedAr
 import { parseFountain, toFountain } from "@/lib/fountain";
 import { isSlateText } from "@/lib/slate-md";
 import { isZipFile, unpackSlateWithReceipt } from "@/lib/slate-pack";
+import { PortableImportDialog } from "@/components/app/portable-import-dialog";
 import { useSlate } from "@/lib/store";
 import type { Project, ScriptElement } from "@/lib/types";
 
@@ -36,6 +37,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [demoManifest, setDemoManifest] = useState<DemoPackManifest | null>(null);
   const [checkingDemo, setCheckingDemo] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [portableImportOpen, setPortableImportOpen] = useState(false);
   const openAttempt = useRef<ReturnType<typeof createProjectOpenAttempt> | null>(null);
   const working = busy || opening;
   const changeOpen = (value: boolean) => {
@@ -224,7 +226,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
       {mode === "import" && <div className="grid gap-3">
         <label className="grid gap-2 text-sm">Screenplay<Textarea rows={10} className="font-script leading-relaxed" placeholder={"INT. TAVERN - DAY\n\nA traveler pauses in the doorway."} value={pages} onChange={(event) => { setPages(event.target.value); setError(""); }} /></label>
         {preview && <p className="text-xs text-muted-foreground">Preview: {preview.elements.filter((element) => element.kind === "scene").length} scenes, {preview.elements.length} screenplay elements. Review formatting before opening.</p>}
-        <div className="flex flex-wrap gap-2"><Button disabled={working || !pages.trim()} onClick={() => importText(pages)}>Open script</Button><Button variant="outline" disabled={working} onClick={() => fileRef.current?.click()}>Choose file</Button></div>
+        <div className="flex flex-wrap gap-2"><Button disabled={working || !pages.trim()} onClick={() => importText(pages)}>Open script</Button><Button variant="outline" disabled={working} onClick={() => fileRef.current?.click()}>Choose file</Button><Button variant="outline" disabled={working} onClick={() => setPortableImportOpen(true)}>Import from device or link</Button></div>
         <p className="text-xs text-muted-foreground">Fountain, plain text, .slate.md, or a ReelBinder project archive (.reelbinder.zip or .slate.zip). An archive opens its saved production workspace; text is previewed here first.</p>
         <input ref={fileRef} type="file" className="hidden" accept=".fountain,.txt,.md,.reelbinder.zip,.slate.zip,.zip" onChange={(event) => { void onFile(event.target.files?.[0]); event.target.value = ""; }} />
       </div>}
@@ -241,6 +243,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
       </div>}
       {error && <p className="rounded-md border border-destructive/50 p-3 text-sm" role="alert">{error}</p>}
       {opening && <Button variant="outline" onClick={() => changeOpen(false)}>Cancel opening</Button>}
+      <PortableImportDialog open={portableImportOpen} onOpenChange={(v) => { setPortableImportOpen(v); if (!v) changeOpen(false); }} />
     </DialogContent>
   </Dialog>;
 }
