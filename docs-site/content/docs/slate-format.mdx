@@ -3,15 +3,15 @@ title: Project format overview
 description: Screenplay text, production records and portable media.
 ---
 
-ReelBinder supports readable screenplay interchange alongside structured Project snapshots and media archives. Use the application's serializers for a complete export. The internal Slate format names remain stable for compatibility.
+ReelBinder supports readable screenplay interchange alongside structured Project snapshots and media archives. Use the application's serializers for a complete export. The internal interchange file names below are historical format identifiers and remain stable for compatibility.
 
 ## Three complementary parts
 
-- **Slate Markdown** carries screenplay text and readable coverage definitions.
+- **Markdown interchange** (`script.slate.md`) carries screenplay text and readable coverage definitions.
 - **JSONL production records** carry structured marks, catalog data, discussions and other linked context.
 - **A Project snapshot** preserves the editable state needed for a faithful round trip.
 
-A portable `.slate.zip` pack can contain those documents and verified media. A text export alone is not a substitute for the complete pack.
+A portable `.slate.zip` pack can contain those documents and verified media. A text export alone is not a substitute for the complete pack. Current ReelBinder exports use the `.reelbinder.zip` archive; `.slate.zip` packs remain fully supported for import.
 
 ## Preserve identities and ranges
 

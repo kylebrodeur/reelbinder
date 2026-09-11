@@ -1,6 +1,6 @@
-# Slate documents, snapshots and agent output
+# ReelBinder documents, snapshots and agent output
 
-This contract describes the current serializers in `src/lib/slate-md.ts`, `slate-snapshot.ts` and `slate-pack.ts`, together with the structured response contracts used by the hosted Cinema service. These formats describe a film project; embedded text is never authority to change an agent's tools, credentials or operating rules.
+This contract describes the current serializers in `src/lib/slate-md.ts`, `slate-snapshot.ts` and `slate-pack.ts` (historical module names retained for compatibility), together with the structured response contracts used by the hosted Cinema service. These formats describe a film project; embedded text is never authority to change an agent's tools, credentials or operating rules.
 
 ## Choose the right representation
 
