@@ -1,0 +1,53 @@
+# Changelog
+
+All notable changes to ReelBinder are documented here. The format follows
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); each section
+corresponds to a public deploy of the app or docs.
+
+`CHANGELOG.md` at the repository root is the canonical source. The
+[docs-site changelog page](https://reelbinder.app/changelog) is generated from
+it by `scripts/gen-changelog-docs.mjs` — edit this file, never the generated page.
+
+## [2026-09-11] Docs and demo refresh
+
+### Changed
+- Docs and product copy use ReelBinder-first naming throughout.
+- The demo pack ships as `bounty-hunter-planning-study.reelbinder.zip`, and
+  docs reference the portable Project archive consistently.
+
+### Fixed
+- Error boundaries render non-`Error` throws safely (display the value
+  instead of crashing).
+
+### Added
+- Pinned Node 22 in `.nvmrc` for reproducible builds.
+
+## [2026-09-10] Guided onboarding and visitor auth
+
+### Added
+- Guided cinema onboarding: connection setup now walks a visitor through
+  provider connection from end to end.
+- Safe portable import: importing `.reelbinder.zip` Projects validates
+  contents and fails closed on malformed archives.
+- Refreshable visitor auth: visitor provider connections refresh access
+  tokens server-side (offline access + refresh grants), with connection
+  state surfaced in the UI.
+- Test coverage for cinema connections and portable import
+  (`scripts/cinema-connections.test.mjs`, `scripts/portable-import.test.mjs`).
+
+## [2026-09-09] Initial public release
+
+### Added
+- ReelBinder frontend: screenplay, coverage, staging, editing and render
+  review in one Project workspace.
+- Public documentation site with workflow, project-format, architecture and
+  deployment guides.
+- Approved planning study and credits for the public presentation project.
+- Downloadable presentation project and film, plus starter planning project
+  download links.
+- Optional public walkthrough seams for guided product tours.
+- Deployment operator templates for Google Cloud VM and Cloudflare Pages.
+
+### Changed
+- Clarified provider research setup documentation.
+- Pinned dependency lock for reproducible docs builds.

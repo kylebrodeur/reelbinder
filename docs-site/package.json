@@ -6,8 +6,8 @@
   "type": "module",
   "scripts": {
     "dev": "shiso dev --host 127.0.0.1 --port 8767 --strictPort",
-    "check": "shiso check",
-    "build": "shiso build",
+    "check": "node ../scripts/gen-changelog-docs.mjs && shiso check",
+    "build": "node ../scripts/gen-changelog-docs.mjs && shiso build",
     "preview": "python3 -m http.server 8767 --bind 127.0.0.1 --directory dist/client"
   },
   "dependencies": {

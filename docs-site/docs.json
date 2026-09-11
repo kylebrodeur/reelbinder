@@ -56,6 +56,13 @@
           "deploy-cloudflare",
           "deployment-handoff"
         ]
+      },
+      {
+        "group": "Project",
+        "collapsible": false,
+        "pages": [
+          "changelog"
+        ]
       }
     ]
   },
