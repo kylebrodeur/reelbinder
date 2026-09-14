@@ -26,6 +26,7 @@ const hooks = registerHooks({
 });
 const { createBlankProject } = await import("../src/lib/sample-project.ts");
 const { useSlate } = await import("../src/lib/store.ts");
+const { SAVE_KEY, hadPersistedProject } = await import("../src/lib/save.ts");
 hooks.deregister();
 
 function storageWith(value) {
@@ -33,6 +34,12 @@ function storageWith(value) {
     getItem: () => value,
     setItem: () => undefined,
     removeItem: () => undefined,
+  };
+}
+
+function rawStorageWith(value) {
+  return {
+    getItem: () => value == null ? null : JSON.stringify(value),
   };
 }
 
@@ -55,6 +62,24 @@ test("missing legacy Project data migrates to blank", async () => {
   useSlate.persist.setOptions({ storage: storageWith({ state: {}, version: 12 }) });
   await useSlate.persist.rehydrate();
   assertBlank(useSlate.getState().project);
+});
+
+test("missing or corrupt persisted state should auto-open Start a film after hydration", () => {
+  assert.equal(hadPersistedProject(SAVE_KEY, rawStorageWith(null)), false);
+  assert.equal(hadPersistedProject(SAVE_KEY, rawStorageWith({ state: {}, version: 13 })), false);
+  assert.equal(hadPersistedProject(SAVE_KEY, { getItem: () => "{not-json" }), false);
+});
+
+test("persisted intentionally blank Project should not auto-open Start a film", () => {
+  const blank = createBlankProject();
+  assert.equal(hadPersistedProject(SAVE_KEY, rawStorageWith({ state: { project: blank }, version: 13 })), true);
+});
+
+test("persisted authored Project should not auto-open Start a film", () => {
+  const authored = createBlankProject();
+  authored.id = "persisted-authored-project";
+  authored.name = "Authored project";
+  assert.equal(hadPersistedProject(SAVE_KEY, rawStorageWith({ state: { project: authored }, version: 13 })), true);
 });
 
 test("rehydration preserves a saved authored Project", async () => {
@@ -100,15 +125,29 @@ test("rehydration preserves a saved authored Project", async () => {
   assert.equal(restored.view, "edit");
 });
 
-test("Start a film exposes blank, verified planning import, and unavailable finished study", () => {
+test("Start a film exposes blank project, verified planning study, and finished presentation Project", () => {
   const source = readFileSync(new URL("../src/components/app/film-entry-dialog.tsx", import.meta.url), "utf8");
   assert.match(source, />New blank project</);
-  assert.match(source, /"Open Bounty Hunter planning study"/);
+  assert.match(source, /"Open planning study"/);
   assert.match(source, /Planning only: no finished film or accepted media is included\./);
-  assert.match(source, /<Button disabled>Coming after final review<\/Button>/);
+  assert.match(source, /"Open finished presentation Project"/);
+  assert.match(source, /The Project opens first\. Its approved film media remains offline until you choose Download media in Render\./);
   assert.match(source, /createProjectOpenAttempt/);
-  assert.match(source, /loadDemoPackWithReceipt/);
-  assert.match(source, /onClick=\{\(\) => void openDemo\(\)\}/);
-  assert.doesNotMatch(source, /createSampleProject|Open script example/);
+  assert.match(source, /loadPlanningStudyWithReceipt/);
+  assert.match(source, /loadFinishedStudyWithReceipt/);
+  assert.match(source, /onClick=\{\(\) => void openPlanningStudy\(\)\}/);
+  assert.match(source, /onClick=\{\(\) => void openFinishedStudy\(\)\}/);
+  assert.doesNotMatch(source, /createSampleProject|Open script example|Coming after final review/);
   assert.match(source, /\.reelbinder\.zip or \.slate\.zip/);
+});
+
+test("SlateApp captures persistence before hydration and auto-opens once only for fresh state", () => {
+  const source = readFileSync(new URL("../src/components/app/slate-app.tsx", import.meta.url), "utf8");
+  const captureIndex = source.indexOf("useRef(hadPersistedProject())");
+  const rehydrateIndex = source.indexOf("useSlate.persist.rehydrate()");
+  assert.ok(captureIndex >= 0, "SlateApp should capture hadPersistedProject");
+  assert.ok(rehydrateIndex > captureIndex, "persistence discriminator must be captured before rehydrate");
+  assert.match(source, /if \(!hydrated \|\| hadProjectBeforeHydration\.current \|\| autoOpenedFreshProject\.current\) return;/);
+  assert.match(source, /autoOpenedFreshProject\.current = true;/);
+  assert.match(source, /setNewOpen\(true\);/);
 });

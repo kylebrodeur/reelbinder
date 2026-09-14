@@ -41,7 +41,7 @@ import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedAr
 import { isSlateText } from "@/lib/slate-md";
 import { applyLiningSidecar } from "@/lib/lining-sidecar";
 import { parseProjectJson } from "@/lib/slate-snapshot";
-import { flushSave, markSaveClean } from "@/lib/save";
+import { flushSave, hadPersistedProject, markSaveClean } from "@/lib/save";
 import { useSlate } from "@/lib/store";
 import type { Project, View } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -65,6 +65,8 @@ export function SlateApp() {
   const [portableImportOpen, setPortableImportOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const activeImport = useRef<Pick<ReturnType<typeof createProjectOpenAttempt>, "signal" | "cancel"> | null>(null);
+  const hadProjectBeforeHydration = useRef(hadPersistedProject());
+  const autoOpenedFreshProject = useRef(false);
 
   useEffect(() => () => activeImport.current?.cancel(), []);
 
@@ -82,6 +84,12 @@ export function SlateApp() {
       window.clearTimeout(t);
     };
   }, []);
+
+  useEffect(() => {
+    if (!hydrated || hadProjectBeforeHydration.current || autoOpenedFreshProject.current) return;
+    autoOpenedFreshProject.current = true;
+    setNewOpen(true);
+  }, [hydrated]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

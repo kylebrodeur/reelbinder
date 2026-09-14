@@ -39,11 +39,13 @@ Public product documentation lives in [`docs-site/`](docs-site/) and is publishe
 
 ## Public project downloads
 
-[The Bounty Hunter presentation-project page](https://docs.reelbinder.app/presentation-project/) lists the approved public starter planning archive, completed presentation Project, V07 film, hashes, and rights boundary. The direct source-only [planning study](https://storage.googleapis.com/reelbinder-public-downloads/starter/bounty-hunter-planning-study.slate.zip) contains screenplay, planning, and floor-plan reference material; the finished presentation Project and film are separately described there.
+[The Bounty Hunter presentation-project page](https://docs.reelbinder.app/presentation-project/) lists the approved public starter planning archive and the rights boundary. The direct source-only [planning study](https://storage.googleapis.com/reelbinder-public-downloads/starter/bounty-hunter-planning-study.reelbinder.zip) contains screenplay, planning, and floor-plan reference material; the finished presentation Project and film media are not linked directly from this repository.
 
 ## Planning study and rights
 
-The source-only Project at [`public/demo/bounty-hunter-planning-study.slate.zip`](public/demo/bounty-hunter-planning-study.slate.zip) contains screenplay, planning, and reference material for evaluation and import use. It contains no generated takes or finished film.
+The source-only Project at [`public/demo/bounty-hunter-planning-study.reelbinder.zip`](public/demo/bounty-hunter-planning-study.reelbinder.zip) contains screenplay, planning, and reference material for evaluation and import use. It contains no generated takes or finished film.
+
+Archive SHA-256: `33fbb070296674abc5e984de7aa5d2a3f746fabd3ff0759479e23cdae10d4831` (436,223 bytes).
 
 Rights are retained by Kyle Brodeur; screenplay by Bradley Weatherholt. The archive and its contents are not covered by the software MIT License, and no additional redistribution or adaptation rights are granted. See [`CREDITS.md`](CREDITS.md).
 

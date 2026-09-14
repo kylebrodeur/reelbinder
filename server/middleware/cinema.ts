@@ -5,6 +5,19 @@ export default async function cinemaMiddleware(
   event: H3Event,
   next: () => unknown | Promise<unknown>,
 ): Promise<unknown> {
+  const DEMO_MEDIA_PATH = "/demo/media/the-bounty-hunter-v07.mp4";
+  if (event.url.pathname === DEMO_MEDIA_PATH) {
+    if (event.req.method !== "GET" && event.req.method !== "HEAD") {
+      return Response.json(
+        { error: { code: "METHOD_NOT_ALLOWED", message: "Only GET and HEAD are allowed." } },
+        { status: 405, headers: { "cache-control": "no-store" } },
+      );
+    }
+    return proxyRequest(event, "https://storage.googleapis.com/reelbinder-public-downloads/v07/the-bounty-hunter-v07.mp4", {
+      fetchOptions: { redirect: "manual", signal: AbortSignal.timeout(120_000) },
+      filterHeaders: ["authorization", "x-forwarded-host", "x-forwarded-proto"],
+    });
+  }
   if (!event.url.pathname.startsWith("/api/cinema/")) return next();
 
   const configured = process.env.CINEMA_BACKEND_URL;

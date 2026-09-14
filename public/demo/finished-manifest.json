@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "title": "The Bounty Hunter — finished presentation Project",
+  "description": "A media-light presentation Project with the screenplay, production planning, floor plan and accepted V07 source-trim timeline. Approved film media stays offline until you choose Download media and relink in Render.",
+  "credit": "Rights retained by Kyle Brodeur. Screenplay by Bradley Weatherholt. This finished study is provided for evaluation and playback use only, outside the software MIT license.",
+  "pack": {
+    "url": "/demo/finished-presentation-project.reelbinder.zip",
+    "sha256": "7a5a7960e5f1bd2d0a78fc9bc3fea81b35512f70789fe726d9643e89a2ee910a",
+    "byteSize": 66585
+  },
+  "media": [
+    {
+      "id": "finished-presentation-film",
+      "url": "/demo/media/the-bounty-hunter-v07.mp4",
+      "sha256": "48613faebbf5cdfb22c21e29655043ac50d73978587a98b26bb1b28a076939e7",
+      "byteSize": 16765387,
+      "mimeType": "video/mp4",
+      "owners": [
+        "project.cutUrl",
+        "project.shots[*].videoUrl",
+        "project.timeline.clips[*].sourceVideoUrl"
+      ],
+      "label": "Accepted V07 finished film"
+    }
+  ]
+}

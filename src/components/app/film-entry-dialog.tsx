@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { CinemaJobFailure, CinemaRequestFailure, getCinemaConnections, submitCinemaJob, waitForCinemaJob, type CinemaJobRequest } from "@/lib/cinema-client";
-import { createProjectOpenAttempt, fetchDemoManifest, loadDemoPackWithReceipt, type DemoPackManifest } from "@/lib/demo-pack";
+import { createProjectOpenAttempt, fetchFinishedStudyManifest, fetchPlanningStudyManifest, loadFinishedStudyWithReceipt, loadPlanningStudyWithReceipt, type FinishedStudyManifest, type PlanningStudyManifest } from "@/lib/demo-pack";
 import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedArchiveImportReceipt } from "@/lib/archive-import-receipt";
 import { parseFountain, toFountain } from "@/lib/fountain";
 import { isSlateText } from "@/lib/slate-md";
@@ -34,7 +34,8 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
   const [terminalFailure, setTerminalFailure] = useState(false);
   const request = useRef<CinemaJobRequest | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [demoManifest, setDemoManifest] = useState<DemoPackManifest | null>(null);
+  const [demoManifest, setDemoManifest] = useState<PlanningStudyManifest | null>(null);
+  const [finishedManifest, setFinishedManifest] = useState<FinishedStudyManifest | null>(null);
   const [checkingDemo, setCheckingDemo] = useState(false);
   const [opening, setOpening] = useState(false);
   const [portableImportOpen, setPortableImportOpen] = useState(false);
@@ -51,12 +52,17 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
   useEffect(() => {
     if (!open) { setOpening(false); return; }
     const controller = new AbortController();
-    setCheckingDemo(true); setDemoManifest(null);
-    // Opening the dialog checks only the small descriptor. Media waits for an explicit Open.
-    void fetchDemoManifest({ signal: controller.signal }).then((manifest) => {
+    setCheckingDemo(true); setDemoManifest(null); setFinishedManifest(null);
+    // Opening the dialog checks only the small descriptors. Media waits for an explicit Open.
+    void fetchPlanningStudyManifest({ signal: controller.signal }).then((manifest) => {
       if (!controller.signal.aborted) setDemoManifest(manifest);
     }).catch(() => {
       // Keep import/example entry available; report an unavailable demo only if asked to open it.
+    });
+    void fetchFinishedStudyManifest({ signal: controller.signal }).then((manifest) => {
+      if (!controller.signal.aborted) setFinishedManifest(manifest);
+    }).catch(() => {
+      // Keep planning/import entry available; report an unavailable finished study only if asked to open it.
     }).finally(() => {
       if (!controller.signal.aborted) setCheckingDemo(false);
     });
@@ -88,7 +94,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
     try { sessionStorage.removeItem(PENDING_DRAFT); sessionStorage.removeItem(DRAFT_REVIEW); } catch { /* Session storage is optional. */ }
   };
 
-  const finish = (view: "script" | "edit" = "script") => { useSlate.getState().setView(view); changeOpen(false); };
+  const finish = (view: "script" | "edit" | "render" = "script") => { useSlate.getState().setView(view); changeOpen(false); };
   const beginOpen = (onApplied?: (project: Project) => void) => {
     if (busy || openAttempt.current) return null;
     const attempt = createProjectOpenAttempt(() => useSlate.getState().project, (project) => {
@@ -99,7 +105,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
     setError(""); setOpening(true);
     return attempt;
   };
-  const openDemo = async () => {
+  const openPlanningStudy = async () => {
     let applied = false;
     let preparedReceipt: PreparedArchiveImportReceipt;
     let appliedProject: Project;
@@ -112,10 +118,10 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
     if (!attempt) return;
     try {
       await attempt.open(async (signal) => {
-        const manifest = demoManifest ?? await fetchDemoManifest({ signal });
+        const manifest = demoManifest ?? await fetchPlanningStudyManifest({ signal });
         signal.throwIfAborted();
         if (openAttempt.current === attempt) setDemoManifest(manifest);
-        const result = await loadDemoPackWithReceipt(manifest, { signal });
+        const result = await loadPlanningStudyWithReceipt(manifest, { signal });
         preparedReceipt = result.receipt;
         return result.project;
       });
@@ -131,6 +137,43 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
       if (applied) toast.error("The planning study opened, but its import receipt could not be prepared.");
       else if (openAttempt.current === attempt && !attempt.signal.aborted)
         setError(failure instanceof Error ? failure.message : "Could not open the film study.");
+    } finally {
+      if (openAttempt.current === attempt) { openAttempt.current = null; setOpening(false); }
+    }
+  };
+
+  const openFinishedStudy = async () => {
+    let applied = false;
+    let preparedReceipt: PreparedArchiveImportReceipt;
+    let appliedProject: Project;
+    let receiptReady: ReturnType<typeof markArchiveImportApplied>;
+    const attempt = beginOpen((project) => {
+      appliedProject = project;
+      receiptReady = markArchiveImportApplied(preparedReceipt, project);
+      useSlate.getState().patchProject({ demoSource: "finished-study" });
+      applied = true;
+    });
+    if (!attempt) return;
+    try {
+      await attempt.open(async (signal) => {
+        const manifest = finishedManifest ?? await fetchFinishedStudyManifest({ signal });
+        signal.throwIfAborted();
+        if (openAttempt.current === attempt) setFinishedManifest(manifest);
+        const result = await loadFinishedStudyWithReceipt(manifest, { signal });
+        preparedReceipt = result.receipt;
+        return result.project;
+      });
+      const project = appliedProject!;
+      const hasPictureClips = project.timeline.clips.some((clip) => clip.track === "picture");
+      if (openAttempt.current === attempt) finish(hasPictureClips ? "render" : "script");
+      const receipt = await receiptReady!;
+      toast.success("Finished presentation Project opened. Its approved film media stays offline until you choose Download media and relink in Render.", {
+        action: { label: "Download receipt", onClick: () => downloadArchiveImportReceipt(receipt) },
+      });
+    } catch (failure) {
+      if (applied) toast.error("The finished presentation Project opened, but its import receipt could not be prepared.");
+      else if (openAttempt.current === attempt && !attempt.signal.aborted)
+        setError(failure instanceof Error ? failure.message : "Could not open the finished presentation Project.");
     } finally {
       if (openAttempt.current === attempt) { openAttempt.current = null; setOpening(false); }
     }
@@ -170,8 +213,12 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
         });
       } else {
         if (!/\.(fountain|txt|md)$/i.test(file.name)) throw new Error("Choose a Fountain, text, Markdown or ReelBinder project archive (.reelbinder.zip or .slate.zip).");
+        const snapshot = JSON.stringify(useSlate.getState().project);
         const text = await file.text();
         attempt.signal.throwIfAborted();
+        if (JSON.stringify(useSlate.getState().project) !== snapshot) {
+          throw new Error("Your project changed while the script was opening. Open it again when you are ready to replace the current project.");
+        }
         if (openAttempt.current === attempt) setPages(text);
       }
     } catch (failure) {
@@ -220,8 +267,8 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
       </div>
       {mode === "demo" && <div className="grid gap-3 py-3">
         <div className="grid gap-3 border-l-2 border-steel pl-4"><div><h3 className="font-display text-2xl">New blank project</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">Begin with an empty screenplay workspace and make every production choice yourself.</p></div><Button disabled={working} onClick={() => { useSlate.getState().newBoard(); finish(); }}>New blank project</Button></div>
-        <div className="grid gap-3 border-l-2 border-border pl-4"><div><h3 className="font-display text-2xl">Bounty Hunter planning study</h3><p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">{demoManifest?.description ?? "Open the approved screenplay and production planning as your own editable copy."}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Planning only: no finished film or accepted media is included.</p>{demoManifest && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{demoManifest.credit}</p>}</div><Button disabled={working || checkingDemo} onClick={() => void openDemo()}>{opening ? <><Loader2 className="animate-spin" />Opening planning study…</> : checkingDemo ? "Checking planning study…" : "Open Bounty Hunter planning study"}</Button></div>
-        <div className="grid gap-3 border-l-2 border-border pl-4" aria-disabled="true"><div><h3 className="font-display text-2xl">Open finished study</h3><p className="mt-1 text-sm leading-relaxed text-muted-foreground">The cleaned accepted archive will be offered here after final review.</p></div><Button disabled>Coming after final review</Button></div>
+        <div className="grid gap-3 border-l-2 border-border pl-4"><div><h3 className="font-display text-2xl">Bounty Hunter planning study</h3><p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">{demoManifest?.description ?? "Open the approved screenplay and production planning as your own editable copy."}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">Planning only: no finished film or accepted media is included.</p>{demoManifest && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{demoManifest.credit}</p>}</div><Button disabled={working || checkingDemo} onClick={() => void openPlanningStudy()}>{opening ? <><Loader2 className="animate-spin" />Opening planning study…</> : checkingDemo ? "Checking planning study…" : "Open planning study"}</Button></div>
+        <div className="grid gap-3 border-l-2 border-border pl-4"><div><h3 className="font-display text-2xl">Open finished presentation Project</h3><p className="mt-1 max-w-prose text-sm leading-relaxed text-muted-foreground">{finishedManifest?.description ?? "Open the accepted media-light presentation Project. Its approved film media stays offline until you choose Download media and relink in Render."}</p><p className="mt-2 text-xs leading-relaxed text-muted-foreground">The Project opens first. Its approved film media remains offline until you choose Download media in Render.</p>{finishedManifest && <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{finishedManifest.credit}</p>}</div><Button disabled={working || checkingDemo || !finishedManifest} onClick={() => void openFinishedStudy()}>{opening ? <><Loader2 className="animate-spin" />Opening finished Project…</> : "Open finished presentation Project"}</Button></div>
       </div>}
       {mode === "import" && <div className="grid gap-3">
         <label className="grid gap-2 text-sm">Screenplay<Textarea rows={10} className="font-script leading-relaxed" placeholder={"INT. TAVERN - DAY\n\nA traveler pauses in the doorway."} value={pages} onChange={(event) => { setPages(event.target.value); setError(""); }} /></label>

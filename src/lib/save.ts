@@ -28,6 +28,18 @@ export function getSaveState(): SaveState {
   return { status, savedAt };
 }
 
+export function hadPersistedProject(name = SAVE_KEY, storage: Pick<Storage, "getItem"> = typeof localStorage !== "undefined" ? localStorage : { getItem: () => null }): boolean {
+  try {
+    const raw = storage.getItem(name);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    const project = parsed?.state?.project;
+    return project != null && typeof project.id === "string" && typeof project.name === "string";
+  } catch {
+    return false;
+  }
+}
+
 export function subscribeSave(listener: (s: SaveState) => void): () => void {
   listeners.add(listener);
   listener({ status, savedAt });

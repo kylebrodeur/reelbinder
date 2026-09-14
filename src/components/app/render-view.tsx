@@ -42,6 +42,8 @@ import {
 import { useSlate } from "@/lib/store";
 import { timelineAudioRenderInputs } from "@/lib/timeline-audio";
 import type { Project, TimelineClip } from "@/lib/types";
+import { fetchFinishedStudyManifest, type FinishedStudyManifest } from "@/lib/demo-pack";
+import { hydrateFinishedStudyMedia, type FinishedStudyMediaReceipt } from "@/lib/finished-study-media";
 import { cn } from "@/lib/utils";
 
 const storageKey = (id: string) => `slate-render-v1:${encodeURIComponent(id)}`;
@@ -219,6 +221,11 @@ export function RenderView() {
   const [applied, setApplied] = useState(false);
   const [uploadingClips, setUploadingClips] = useState<Record<string, boolean>>({});
   const [layoutMode, setLayoutMode] = useState<"split" | "toggle">("split");
+  const [finishedStudyManifest, setFinishedStudyManifest] = useState<FinishedStudyManifest | null>(null);
+  const [finishedStudyError, setFinishedStudyError] = useState<string | null>(null);
+  const [hydrating, setHydrating] = useState(false);
+  const [hydrationProgress, setHydrationProgress] = useState<string>("");
+  const [hydrationReceipt, setHydrationReceipt] = useState<FinishedStudyMediaReceipt | null>(null);
   const [activeToggleTab, setActiveToggleTab] = useState<"deliverable" | "reference" | "stills">(
     "deliverable",
   );
@@ -229,6 +236,8 @@ export function RenderView() {
   liveProjectId.current = project.id;
   const running = useRef(new Set<string>());
   const preparing = useRef(false);
+
+
 
   const preparation = useMemo(() => {
     try {
@@ -254,6 +263,42 @@ export function RenderView() {
       .filter((clip) => clip.track === "picture")
       .sort((a, b) => a.start - b.start);
   }, [project.timeline]);
+  const finishedStudyOffline = project.demoSource === "finished-study" &&
+    pictureClips.some((clip) => !clip.sourceVideoUrl && !clip.sourceFrameUrl);
+  useEffect(() => {
+    if (!finishedStudyOffline || finishedStudyManifest) return;
+    const controller = new AbortController();
+    void fetchFinishedStudyManifest({ signal: controller.signal }).then((manifest) => {
+      if (!controller.signal.aborted) setFinishedStudyManifest(manifest);
+    }).catch(() => {
+      if (!controller.signal.aborted) setFinishedStudyError("The finished-study media descriptor is unavailable.");
+    });
+    return () => controller.abort();
+  }, [finishedStudyOffline, finishedStudyManifest]);
+
+  const hydrateMedia = useCallback(async () => {
+    if (!finishedStudyManifest || hydrating) return;
+    setHydrating(true);
+    setFinishedStudyError(null);
+    setHydrationProgress("Downloading and verifying approved media…");
+    const controller = new AbortController();
+    const snapshot = JSON.stringify(useSlate.getState().project);
+    try {
+      const result = await hydrateFinishedStudyMedia(finishedStudyManifest, useSlate.getState().project, controller.signal);
+      if (JSON.stringify(useSlate.getState().project) !== snapshot)
+        throw new Error("Your project changed while media was downloading. Review it and try Download media again.");
+      useSlate.getState().replaceProject(result.project);
+      setHydrationReceipt(result.receipt);
+      setHydrationProgress("");
+      if (result.receipt.state === "failed") setFinishedStudyError(result.receipt.errors[0] ?? "Media download failed.");
+      else setHydrationProgress("Media relinked.");
+    } catch (error) {
+      setHydrationProgress("");
+      setFinishedStudyError(error instanceof Error ? error.message : "Media download failed.");
+    } finally {
+      setHydrating(false);
+    }
+  }, [finishedStudyManifest, hydrating]);
 
   const persist = useCallback((record: RenderRecovery) => {
     persistRenderRecovery(
@@ -1173,6 +1218,52 @@ export function RenderView() {
             </div>
           </div>
 
+        {finishedStudyOffline && (
+          <div className="rounded-xl border border-border bg-card p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0 space-y-1">
+                <div className="flex items-center gap-2">
+                  <Download className="size-4 text-steel" />
+                  <h3 className="text-sm font-semibold text-foreground">Media offline</h3>
+                  {hydrationReceipt?.state === "applied" && (
+                    <Badge variant="ok" className="text-[11px]">Relinked</Badge>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {finishedStudyManifest
+                    ? `${finishedStudyManifest.media.length} approved media ${finishedStudyManifest.media.length === 1 ? "file" : "files"} are listed by the published descriptor.`
+                    : "The approved media descriptor is loading."}{" "}
+                  Downloads come from the verified public mirror and are checked against the published SHA-256, byte size and MIME type before your visitor session owns them.
+                </p>
+                <a
+                  href="https://docs.reelbinder.app/presentation-project/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-steel underline-offset-2 hover:underline"
+                >
+                  Rights, hashes and public mirror details <ExternalLink className="size-3" />
+                </a>
+              </div>
+              <Button disabled={hydrating || !finishedStudyManifest} onClick={() => void hydrateMedia()}>
+                {hydrating ? <><Loader2 className="animate-spin" />Downloading…</> : <><Download /> Download media and relink</>}
+              </Button>
+            </div>
+            {hydrationProgress && <p className="mt-2 text-xs text-muted-foreground">{hydrationProgress}</p>}
+            {finishedStudyError && (
+              <p className="mt-2 rounded-md border border-destructive/50 p-3 text-xs" role="alert">{finishedStudyError}</p>
+            )}
+            {hydrationReceipt && (
+              <div className="mt-2 space-y-1">
+                {hydrationReceipt.descriptors.map((descriptor) => (
+                  <p key={descriptor.id} className="text-[11px] text-muted-foreground">
+                    {descriptor.label}: {descriptor.outcome}
+                    {descriptor.error ? ` — ${descriptor.error}` : ""}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
           <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xs">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">

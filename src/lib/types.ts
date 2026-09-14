@@ -491,6 +491,7 @@ export interface Project {
   skills: PromptSkill[];
   chain: string[];
   cutUrl: string | null;
+  demoSource?: "planning-study" | "finished-study";
   musicAssets?: CinemaMediaAsset[];
   audioClips?: TimelineAudioClip[];
   binder: BinderAsset[];
