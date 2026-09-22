@@ -1,4 +1,4 @@
-import { ChevronDown, Columns2, Image, Layers, Map, RectangleHorizontal } from "lucide-react";
+import { ChevronDown, Columns2, Image, Layers, Map, RectangleHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { poseAt, poseCameraAt } from "@/lib/blocking-playback";
 import { BlockingCanvas } from "@/components/app/blocking-canvas";
@@ -152,37 +152,119 @@ export function BlockingStudio({
     />
   );
 
-  const frame = (
-    <OriginalInset
-      originalUrl={showReferences ? originalBoard?.url ?? null : null}
-      originalAlt="Original storyboard reference"
-    >
-      <BlockingCanvas
-        key={`${shot.id}-frame`}
-        layers={frameLayers}
-        onLayersChange={setFrameLayers}
-        sketch={shot.sketch}
-        annotations={shot.annotations}
-        frameUrl={shot.frameUrl}
-        cast={frameCast}
-        selectedFigureId={selected && frameCastIds.has(selected) ? selected : null}
-        placeFigureId={placeOnFrame && frameCastIds.has(placeOnFrame) ? placeOnFrame : null}
-        overlayFigures={preview ?? undefined}
-        overlayCam={previewCam ?? undefined}
-        onSelectFigure={pickCast}
-        onSketch={(sk) => setSketch(shot.id, sk)}
-        onAnnotations={(a) => setAnnotations(shot.id, a)}
-        onLinkedMove={(id, p) => {
-          if (!cam || !frameCastIds.has(id)) return;
-          const pos = projectFrameToFloor(p, cam);
-          setBlocking(
-            shot.id,
-            { figures: figures.map((f) => (f.id === id ? { ...f, x: pos.x, y: pos.y } : f)) },
-            { syncSketch: false },
+  const frameCastToolbar = frameCast.length ? (
+    <div className="flex flex-wrap gap-1" role="toolbar" aria-label="Frame cast">
+      {frameCast.map((figure) => {
+        const placed = shot.sketch.stamps.some((stamp) => stamp.figureId === figure.id);
+        return (
+          <Button
+            key={figure.id}
+            type="button"
+            size="sm"
+            variant={selected === figure.id ? "secondary" : "outline"}
+            aria-pressed={selected === figure.id}
+            aria-label={`${placed ? "Select" : "Place"} ${figure.name} in frame`}
+            onClick={() => pickCast(figure.id)}
+          >
+            {figure.name}
+          </Button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  const frameItems = shot.sketch.stamps.length ? (
+    <div className="space-y-2 rounded-md border border-border p-2" role="region" aria-label="Frame items">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-semibold text-muted-foreground">Frame items</span>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+          onClick={() => setSketch(shot.id, { ...shot.sketch, stamps: [] })}
+        >
+          Clear frame items
+        </Button>
+      </div>
+      <ul className="space-y-1" role="list">
+        {shot.sketch.stamps.map((stamp) => {
+          const figure = stamp.figureId
+            ? frameCast.find((candidate) => candidate.id === stamp.figureId)
+            : undefined;
+          const label =
+            stamp.kind === "figure"
+              ? figure?.name || stamp.label || "Unnamed figure"
+              : stamp.label || "Unnamed prop";
+          return (
+            <li
+              key={stamp.id}
+              className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-background px-2 py-1"
+              role="listitem"
+            >
+              <span className="min-w-0 truncate text-xs">
+                {label}
+                <span className="ml-1.5 text-[10px] text-muted-foreground">
+                  {stamp.kind === "figure" ? "Figure" : "Prop"}
+                </span>
+              </span>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label={`Remove ${label} from frame`}
+                title={`Remove ${label} from frame`}
+                onClick={() =>
+                  setSketch(shot.id, {
+                    ...shot.sketch,
+                    stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
+                  })
+                }
+              >
+                <Trash2 className="size-3.5" />
+              </Button>
+            </li>
           );
-        }}
-      />
-    </OriginalInset>
+        })}
+      </ul>
+    </div>
+  ) : null;
+
+  const frame = (
+    <>
+      {frameCastToolbar}
+      {frameItems}
+      <OriginalInset
+        originalUrl={showReferences ? originalBoard?.url ?? null : null}
+        originalAlt="Original storyboard reference"
+      >
+        <BlockingCanvas
+          key={`${shot.id}-frame`}
+          layers={frameLayers}
+          onLayersChange={setFrameLayers}
+          sketch={shot.sketch}
+          annotations={shot.annotations}
+          frameUrl={shot.frameUrl}
+          cast={frameCast}
+          selectedFigureId={selected && frameCastIds.has(selected) ? selected : null}
+          placeFigureId={placeOnFrame && frameCastIds.has(placeOnFrame) ? placeOnFrame : null}
+          overlayFigures={preview ?? undefined}
+          overlayCam={previewCam ?? undefined}
+          onSelectFigure={pickCast}
+          onSketch={(sk) => setSketch(shot.id, sk)}
+          onAnnotations={(a) => setAnnotations(shot.id, a)}
+          onLinkedMove={(id, p) => {
+            if (!cam || !frameCastIds.has(id)) return;
+            const pos = projectFrameToFloor(p, cam);
+            setBlocking(
+              shot.id,
+              { figures: figures.map((f) => (f.id === id ? { ...f, x: pos.x, y: pos.y } : f)) },
+              { syncSketch: false },
+            );
+          }}
+        />
+      </OriginalInset>
+    </>
   );
 
   return (

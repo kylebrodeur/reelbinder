@@ -1,5 +1,5 @@
 import { KeyFrameGuidance } from "@/components/app/key-frame-guidance";
-import { ExternalLink, Film, ImageIcon, Loader2, RefreshCw, Sparkles, Upload, Wand2 } from "lucide-react";
+import { ExternalLink, Film, ImageIcon, Loader2, RefreshCw, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BlockingCanvas } from "@/components/app/blocking-canvas";
@@ -676,6 +676,62 @@ export function FrameStudio({ shot }: { shot: Shot }) {
               </Button>
             );
           })}
+        </div>
+      ) : null}
+      {shot.sketch.stamps.length ? (
+        <div className="space-y-2 rounded-md border border-border p-2" role="region" aria-label="Frame items">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-semibold text-muted-foreground">Frame items</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
+              onClick={() => setSketch(shot.id, { ...shot.sketch, stamps: [] })}
+            >
+              Clear frame items
+            </Button>
+          </div>
+          <ul className="space-y-1" role="list">
+            {shot.sketch.stamps.map((stamp) => {
+              const figure = stamp.figureId
+                ? cast.find((candidate) => candidate.id === stamp.figureId)
+                : undefined;
+              const label =
+                stamp.kind === "figure"
+                  ? figure?.name || stamp.label || "Unnamed figure"
+                  : stamp.label || "Unnamed prop";
+              return (
+                <li
+                  key={stamp.id}
+                  className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-background px-2 py-1"
+                  role="listitem"
+                >
+                  <span className="min-w-0 truncate text-xs">
+                    {label}
+                    <span className="ml-1.5 text-[10px] text-muted-foreground">
+                      {stamp.kind === "figure" ? "Figure" : "Prop"}
+                    </span>
+                  </span>
+                  <Button
+                    type="button"
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={`Remove ${label} from frame`}
+                    title={`Remove ${label} from frame`}
+                    onClick={() =>
+                      setSketch(shot.id, {
+                        ...shot.sketch,
+                        stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
+                      })
+                    }
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       ) : null}
       <BlockingCanvas
