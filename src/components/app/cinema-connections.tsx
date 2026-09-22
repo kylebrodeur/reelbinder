@@ -24,8 +24,10 @@ import {
   cinemaRequest,
   getCinemaConnections,
   getCinemaHealth,
+  testConnection,
   type CinemaConnection,
   type CinemaHealth,
+  type ConnectionTestResponse,
 } from "@/lib/cinema-client";
 import {
   classifyConnectionError,
@@ -89,6 +91,102 @@ function expiryDescription(expiresAt: number) {
   return `expires ${absolute} · ${remaining} remaining`;
 }
 
+export function ConnectionRow({
+  connection,
+  probe,
+  onTest,
+  onRenew,
+  onDisconnect,
+  disabled,
+  compact = false,
+}: {
+  connection: CinemaConnection;
+  probe?: { busy: boolean; result?: ConnectionTestResponse; error?: string };
+  onTest: (connection: CinemaConnection) => void;
+  onRenew: (connection: CinemaConnection) => void;
+  onDisconnect: (connection: CinemaConnection) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  const result = probe?.result;
+  const verified = result && result.results.every((r) => r.status === "verified");
+  const firstFailure = result?.results.find((r) => r.status === "failed");
+  const statusText = verified
+    ? "Access verified"
+    : firstFailure
+      ? `${firstFailure.tool} ${firstFailure.code}`
+      : "Access untested";
+
+  return (
+    <div
+      className={`flex items-start justify-between gap-3 border-b border-border py-2 ${
+        compact ? "text-xs" : ""
+      }`}
+    >
+      <div className="min-w-0 flex-1">
+        <p className={compact ? "font-medium" : "text-sm"}>{connectionName(connection)}</p>
+        <p className="text-xs text-muted-foreground">
+          {probe?.busy ? "Testing access…" : statusText} · {expiryDescription(connection.expiresAt)}
+        </p>
+        {result && !probe?.busy && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {result.results.map((item) => (
+              <span
+                key={item.tool}
+                className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                  item.status === "verified"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-destructive/10 text-destructive"
+                }`}
+                title={item.message}
+              >
+                {item.tool}: {item.status}
+                {item.status === "failed" && item.code && (
+                  <span className="opacity-80">({item.code})</span>
+                )}
+              </span>
+            ))}
+          </div>
+        )}
+        {probe?.error && !probe?.busy && (
+          <p className="mt-1 text-[10px] text-destructive">{probe.error}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`Test ${connectionName(connection)}`}
+          disabled={disabled || probe?.busy}
+          onClick={() => onTest(connection)}
+        >
+          {probe?.busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Test
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          aria-label={`Renew ${connectionName(connection)}`}
+          disabled={disabled}
+          onClick={() => onRenew(connection)}
+        >
+          <RefreshCw className="h-3.5 w-3.5" />
+          Renew
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={disabled}
+          onClick={() => onDisconnect(connection)}
+        >
+          <Unplug className="h-3.5 w-3.5" />
+          Disconnect
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export function ConnectionsPanel() {
   const [tab, setTab] = useState<"guided" | "direct">("guided");
   const [connections, setConnections] = useState<CinemaConnection[]>([]);
@@ -110,6 +208,9 @@ export function ConnectionsPanel() {
   const [clientSecret, setClientSecret] = useState("");
   const [showRefreshableFields, setShowRefreshableFields] = useState(false);
   const [renewing, setRenewing] = useState<CinemaConnection | null>(null);
+  const [probeById, setProbeById] = useState<
+    Record<string, { busy: boolean; result?: ConnectionTestResponse; error?: string }>
+  >({});
   const credentialInput = useRef<HTMLInputElement>(null);
 
   // Error diagnostics
@@ -268,6 +369,25 @@ export function ConnectionsPanel() {
       setMessage(error instanceof Error ? error.message : "Could not disconnect.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runTest = async (connection: CinemaConnection) => {
+    setProbeById((prev) => ({ ...prev, [connection.connectionId]: { busy: true } }));
+    try {
+      const result = await testConnection(connection.connectionId);
+      setProbeById((prev) => ({
+        ...prev,
+        [connection.connectionId]: { busy: false, result },
+      }));
+    } catch (error) {
+      setProbeById((prev) => ({
+        ...prev,
+        [connection.connectionId]: {
+          busy: false,
+          error: error instanceof Error ? error.message : "Test failed.",
+        },
+      }));
     }
   };
 
@@ -862,24 +982,16 @@ export function ConnectionsPanel() {
                   <p className="text-xs text-muted-foreground">No active connections found.</p>
                 ) : (
                   connections.map((conn) => (
-                    <div
+                    <ConnectionRow
                       key={conn.connectionId}
-                      className="flex items-center justify-between border-b border-border py-2 text-xs"
-                    >
-                      <div>
-                        <p className="font-medium">{connectionName(conn)}</p>
-                        <p className="text-muted-foreground">
-                          {expiryDescription(conn.expiresAt)}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => void disconnect(conn.connectionId)}
-                      >
-                        <Unplug className="h-3.5 w-3.5 mr-1" /> Disconnect
-                      </Button>
-                    </div>
+                      connection={conn}
+                      probe={probeById[conn.connectionId]}
+                      onTest={runTest}
+                      onRenew={beginRenewal}
+                      onDisconnect={(c) => void disconnect(c.connectionId)}
+                      disabled={busy}
+                      compact
+                    />
                   ))
                 )}
               </div>
@@ -1209,38 +1321,15 @@ export function ConnectionsPanel() {
           <p className="text-sm text-muted-foreground">No account connected.</p>
         )}
         {connections.map((connection) => (
-          <div
+          <ConnectionRow
             key={connection.connectionId}
-            className="flex items-center justify-between gap-3 border-b border-border py-2"
-          >
-            <div>
-              <p className="text-sm">{connectionName(connection)}</p>
-              <p className="text-xs text-muted-foreground">
-                Access untested · {expiryDescription(connection.expiresAt)}
-              </p>
-            </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                aria-label={`Renew ${connectionName(connection)}`}
-                disabled={busy}
-                onClick={() => beginRenewal(connection)}
-              >
-                <RefreshCw />
-                Renew
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={busy}
-                onClick={() => void disconnect(connection.connectionId)}
-              >
-                <Unplug />
-                Disconnect
-              </Button>
-            </div>
-          </div>
+            connection={connection}
+            probe={probeById[connection.connectionId]}
+            onTest={runTest}
+            onRenew={beginRenewal}
+            onDisconnect={(c) => void disconnect(c.connectionId)}
+            disabled={busy}
+          />
         ))}
       </div>
 

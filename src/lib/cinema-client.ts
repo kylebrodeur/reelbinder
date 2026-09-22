@@ -123,3 +123,27 @@ export async function waitForCinemaJob<T>(jobId: string): Promise<T> {
     "This job is still unresolved. Keep its job ID; do not submit another paid generation yet.",
   );
 }
+
+export interface ConnectionProbeResult {
+  tool: "script" | "image" | "video" | "music";
+  model: string;
+  status: "verified" | "failed";
+  code: string;
+  message: string;
+}
+
+export interface ConnectionTestResponse {
+  connectionId: string;
+  provider: string;
+  mode: string;
+  projectId?: string;
+  location?: string;
+  results: ConnectionProbeResult[];
+}
+
+export async function testConnection(connectionId: string): Promise<ConnectionTestResponse> {
+  return cinemaRequest<ConnectionTestResponse>(
+    `/connections/${encodeURIComponent(connectionId)}/test`,
+    { method: "POST", body: JSON.stringify({}) },
+  );
+}
