@@ -3,6 +3,7 @@ import {
   CinemaJobFailure,
   CinemaRequestFailure,
   cinemaRequest,
+  formatCinemaRequestFailure,
   waitForCinemaJob,
 } from "./cinema-client";
 import { guardPreflightFinding, projectFingerprint } from "./preflight-guard";
@@ -446,7 +447,12 @@ async function executeQuestion(id: string, freshSubmission = false) {
       [400, 401, 403, 404, 413, 422, 503].includes(failure.status);
     publish({
       ...value,
-      error: failure instanceof Error ? failure.message : "The assistant request could not finish.",
+      error:
+        failure instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(failure)
+          : failure instanceof Error
+            ? failure.message
+            : "The assistant request could not finish.",
       canRestart: !!beforeSubmission || knownFailure || rejectedSubmission,
     });
   } finally {

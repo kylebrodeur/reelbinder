@@ -25,6 +25,7 @@ import {
   CinemaJobFailure,
   CinemaRequestFailure,
   cinemaRequest,
+  formatCinemaRequestFailure,
   waitForCinemaJob,
 } from "@/lib/cinema-client";
 import { localRasterUpload, privateImageAssetId } from "@/lib/cinema-images";
@@ -365,7 +366,11 @@ export function RenderView() {
         }
       } catch (failure) {
         const message =
-          failure instanceof Error ? failure.message : "The render pipeline could not finish.";
+          failure instanceof CinemaRequestFailure
+            ? formatCinemaRequestFailure(failure)
+            : failure instanceof Error
+              ? failure.message
+              : "The render pipeline could not finish.";
         const terminal =
           failure instanceof CinemaJobFailure ||
           (failure instanceof CinemaRequestFailure &&

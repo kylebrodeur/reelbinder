@@ -6,7 +6,7 @@ import { ConnectionsControl } from "@/components/app/cinema-connections";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { CinemaJobFailure, CinemaRequestFailure, getCinemaConnections, submitCinemaJob, waitForCinemaJob, type CinemaJobRequest } from "@/lib/cinema-client";
+import { CinemaJobFailure, CinemaRequestFailure, formatCinemaRequestFailure, getCinemaConnections, submitCinemaJob, waitForCinemaJob, type CinemaJobRequest } from "@/lib/cinema-client";
 import { createProjectOpenAttempt, fetchFinishedStudyManifest, fetchPlanningStudyManifest, loadFinishedStudyWithReceipt, loadPlanningStudyWithReceipt, type FinishedStudyManifest, type PlanningStudyManifest } from "@/lib/demo-pack";
 import { downloadArchiveImportReceipt, markArchiveImportApplied, type PreparedArchiveImportReceipt } from "@/lib/archive-import-receipt";
 import { parseFountain, toFountain } from "@/lib/fountain";
@@ -248,7 +248,13 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
         try { sessionStorage.setItem(PENDING_DRAFT, id); } catch { /* The server keeps the job record. */ }
       }));
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not draft the screenplay.");
+      setError(
+        failure instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(failure)
+          : failure instanceof Error
+            ? failure.message
+            : "Could not draft the screenplay.",
+      );
       setTerminalFailure(failure instanceof CinemaJobFailure && failure.code !== "INTERRUPTED_UNCERTAIN");
       if (!jobId && failure instanceof CinemaRequestFailure && failure.status >= 400 && failure.status < 500 && failure.status !== 408) {
         request.current = null;

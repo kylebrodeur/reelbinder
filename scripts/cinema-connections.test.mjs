@@ -40,7 +40,17 @@ const {
   classifyConnectionError,
   SETUP_STORAGE_KEY,
 } = await import("../src/lib/cinema-onboarding.ts");
-const { getConnectionProbe, imageGenerationAvailable, imageProbeReadiness, testConnection } = await import("../src/lib/cinema-client.ts");
+const {
+  getConnectionProbe,
+  imageGenerationAvailable,
+  imageProbeReadiness,
+  testConnection,
+  getCinemaJobUsage,
+  parseCinemaJobUsage,
+  formatCinemaRequestFailure,
+  CinemaRequestFailure,
+  CINEMA_JOB_KINDS,
+} = await import("../src/lib/cinema-client.ts");
 
 hooks.deregister();
 
@@ -89,6 +99,10 @@ function transpileConnectionsPanel() {
         cinemaRequest: async () => {},
         getCinemaConnections: async () => [],
         getCinemaHealth: async () => ({ liveVerified: true, capabilities: {} }),
+        getCinemaJobUsage: async () => ({
+          jobs: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0, byKind: Object.fromEntries(CINEMA_JOB_KINDS.map((k) => [k, 0])) },
+          admission: { pending: 0, pendingLimit: 4 },
+        }),
         testConnection: async () => ({
           connectionId: "conn-1",
           provider: "google-cloud",
@@ -96,6 +110,7 @@ function transpileConnectionsPanel() {
           results: [],
         }),
         clearConnectionProbe: () => {},
+        formatCinemaRequestFailure: (error) => `${error.message} (${error.code})`,
       };
     }
 
@@ -374,4 +389,81 @@ test("ConnectionRow renders verified and failed per-tool probe results", () => {
   assert.match(failed, /video: unavailable/);
   assert.match(failed, /renewal will not enable it/);
   assert.doesNotMatch(failed, /Access verified/);
+});
+
+test("getCinemaJobUsage fetches and validates the usage endpoint", async () => {
+  const originalFetch = globalThis.fetch;
+  const usage = {
+    jobs: {
+      total: 5,
+      queued: 1,
+      running: 1,
+      succeeded: 2,
+      failed: 1,
+      byKind: { script: 1, preflight: 1, image: 1, video: 1, music: 0, render: 1 },
+    },
+    admission: { pending: 2, pendingLimit: 4 },
+  };
+  globalThis.fetch = async (url, options) => {
+    assert.equal(url, "/api/cinema/jobs/usage");
+    assert.equal(options.method, undefined);
+    assert.equal(options.credentials, "include");
+    return { ok: true, status: 200, json: async () => usage };
+  };
+  try {
+    const result = await getCinemaJobUsage();
+    assert.equal(result.admission.pending, 2);
+    assert.equal(result.admission.pendingLimit, 4);
+    assert.equal(result.jobs.total, 5);
+    assert.equal(result.jobs.byKind.render, 1);
+    assert.equal(result.jobs.byKind.music, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("parseCinemaJobUsage validates expected fields and defaults missing kinds to zero", () => {
+  const minimal = {
+    jobs: { total: 1, queued: 0, running: 0, succeeded: 1, failed: 0, byKind: {} },
+    admission: { pending: 0, pendingLimit: 2 },
+  };
+  const parsed = parseCinemaJobUsage(minimal);
+  assert.equal(parsed.jobs.total, 1);
+  assert.equal(parsed.jobs.byKind.video, 0);
+
+  const withKinds = {
+    jobs: { total: 3, queued: 1, running: 0, succeeded: 1, failed: 1, byKind: { image: 1, video: 2, unknown: 9 } },
+    admission: { pending: 1, pendingLimit: 2 },
+  };
+  const kindParsed = parseCinemaJobUsage(withKinds);
+  assert.equal(kindParsed.jobs.byKind.image, 1);
+  assert.equal(kindParsed.jobs.byKind.video, 2);
+  assert.equal(kindParsed.jobs.byKind.script, 0);
+  assert.equal(("unknown" in kindParsed.jobs.byKind), false);
+
+  for (const bad of [
+    null,
+    { jobs: null, admission: { pending: 0, pendingLimit: 1 } },
+    { jobs: { total: -1, queued: 0, running: 0, succeeded: 0, failed: 0, byKind: {} }, admission: { pending: 0, pendingLimit: 1 } },
+    { jobs: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0, byKind: {} }, admission: { pending: "0", pendingLimit: 1 } },
+  ]) {
+    assert.throws(() => parseCinemaJobUsage(bad));
+  }
+});
+
+test("formatCinemaRequestFailure surfaces the actual code and message", () => {
+  const queue = new CinemaRequestFailure("The job queue is full.", 429, "QUEUE_FULL");
+  const text = formatCinemaRequestFailure(queue);
+  assert.match(text, /QUEUE_FULL/);
+  assert.match(text, /job queue is full/);
+});
+
+test("ConnectionsPanel renders the read-only job usage control", () => {
+  const { ConnectionsPanel } = transpileConnectionsPanel();
+  const html = renderToStaticMarkup(React.createElement(ConnectionsPanel));
+  assert.match(html, /Session job usage/);
+  assert.match(html, /Pending queue \/ limit/);
+  assert.match(html, /Check job usage/);
+  assert.match(html, /Terminal records stay for recovery/);
+  assert.doesNotMatch(html, /purge|reset usage|delete history|clear jobs/i);
 });

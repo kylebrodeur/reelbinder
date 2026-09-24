@@ -5,7 +5,7 @@ description: Discover and use ReelBinder Studio tools from a browser-connected M
 
 ReelBinder Studio exposes a browser-side [WebMCP](https://webmachinelearning.github.io/webmcp/) tool surface. A desktop agent can discover the tools in the open Studio page and invoke bounded navigation, inspection, and approved project-edit actions through a local relay.
 
-> **Release status:** The currently deployed hosted release, `20260924-31bbdf6` at source commit `31bbdf6`, verifies **20** `document.modelContext` tools. The catalog below describes the current hosted release. Always call `webmcp_list_tools` as the runtime source of truth.
+> **Release status:** The currently deployed hosted release, `20260924-957017c` at source commit `957017ca`, verifies **20** `document.modelContext` tools. The catalog below describes the current hosted release. Always call `webmcp_list_tools` as the runtime source of truth.
 
 The integration lives in the Studio frontend. A hosted target must be running a release that contains the WebMCP registry; a source commit alone does not change the hosted tool catalog. The tools operate on the current browser page and visitor session, not on a separate shared project database.
 
@@ -41,7 +41,7 @@ The relay itself provides three helpers:
 
 ## Current hosted release
 
-The deployed hosted release `20260924-31bbdf6` (source commit `31bbdf6`) currently exposes these 20 `document.modelContext` tools:
+The deployed hosted release `20260924-957017c` (source commit `957017ca`) currently exposes these 20 `document.modelContext` tools:
 
 | Tool | Access | Purpose |
 | --- | --- | --- |

@@ -5,6 +5,8 @@ import {
   assertCinemaJobId,
   waitForCinemaJob,
   CinemaJobFailure,
+  CinemaRequestFailure,
+  formatCinemaRequestFailure,
 } from "./cinema-client";
 import {
   appendFrameVersions,
@@ -85,7 +87,12 @@ async function executeImageRecovery(initial: ImageRecovery, onJob?: (id: string)
     saveImageRecovery(record);
     return applyRecoveredImage(record, assets);
   } catch (error) {
-    let message = error instanceof Error ? error.message : "Image generation could not finish.";
+    let message =
+      error instanceof CinemaRequestFailure
+        ? formatCinemaRequestFailure(error)
+        : error instanceof Error
+          ? error.message
+          : "Image generation could not finish.";
     if (record.status === "pending" && (returnedResult || (error instanceof CinemaJobFailure && error.code !== "INTERRUPTED_UNCERTAIN"))) {
       try { saveImageRecovery({ ...record, status: "failed", error: message }); }
       catch (storageError) { message += ` ${storageError instanceof Error ? storageError.message : "Keep recovery data."}`; }
@@ -104,8 +111,17 @@ export async function resumeShotImage(shotId: string, options: { onJob?: (id: st
     const record = getImageRecovery(project.id, shotId);
     if (!record) throw new Error("There is no saved image request for this setup.");
     return await executeImageRecovery(record, options.onJob);
-  } catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : "Could not restore image request." }; }
-  finally { activeShots.delete(key); }
+  } catch (error) {
+    return {
+      ok: false as const,
+      error:
+        error instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(error)
+          : error instanceof Error
+            ? error.message
+            : "Could not restore image request.",
+    };
+  } finally { activeShots.delete(key); }
 }
 
 async function runShotImage(
@@ -122,7 +138,17 @@ async function runShotImage(
     const recovery = getImageRecovery(current.id, shotId);
     if (recovery?.status === "pending") return resumeShotImage(shotId, options);
     if (recovery) return { ok: false as const, error: "The previous image request is resolved. Choose New image before starting another paid generation." };
-  } catch (error) { return { ok: false as const, error: error instanceof Error ? error.message : "Image recovery is unavailable." }; }
+  } catch (error) {
+    return {
+      ok: false as const,
+      error:
+        error instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(error)
+          : error instanceof Error
+            ? error.message
+            : "Image recovery is unavailable.",
+    };
+  }
   if (!options?.connectionId)
     return {
       ok: false as const,
@@ -256,7 +282,12 @@ async function runShotImage(
   } catch (error) {
     return {
       ok: false as const,
-      error: error instanceof Error ? error.message : "Image generation could not finish.",
+      error:
+        error instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(error)
+          : error instanceof Error
+            ? error.message
+            : "Image generation could not finish.",
       jobId,
     };
   } finally {

@@ -10,6 +10,7 @@ import {
   assertCinemaJobId,
   CinemaJobFailure,
   CinemaRequestFailure,
+  formatCinemaRequestFailure,
   getCinemaConnections,
   getCinemaHealth,
   waitForCinemaJob,
@@ -354,7 +355,13 @@ function MediaJobPanel({
         }),
       );
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "The media job could not complete.");
+      setError(
+        failure instanceof CinemaRequestFailure
+          ? formatCinemaRequestFailure(failure)
+          : failure instanceof Error
+            ? failure.message
+            : "The media job could not complete.",
+      );
       setCanReset(
         !prepared ||
           (failure instanceof CinemaJobFailure && failure.code !== "INTERRUPTED_UNCERTAIN") ||

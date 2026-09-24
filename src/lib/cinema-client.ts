@@ -1,6 +1,9 @@
 /** Browser contract for the same-origin cinema service. Keys never enter Project state. */
 export type ConnectionMode = "express" | "standard" | "gemini";
 
+export const CINEMA_JOB_KINDS = ["script", "preflight", "image", "video", "music", "render"] as const;
+export type CinemaJobKind = typeof CINEMA_JOB_KINDS[number];
+
 export interface CinemaConnection {
   connectionId: string;
   provider: "google-cloud" | "parallel";
@@ -17,7 +20,7 @@ export interface CinemaHealth {
 }
 
 export interface CinemaJobRequest {
-  kind: "script" | "preflight" | "image" | "video" | "music" | "render";
+  kind: CinemaJobKind;
   connectionId?: string;
   parallelConnectionId?: string;
   projectId?: string;
@@ -46,6 +49,75 @@ export class CinemaRequestFailure extends Error {
     super(message);
     this.name = "CinemaRequestFailure";
   }
+}
+
+export function formatCinemaRequestFailure(error: CinemaRequestFailure): string {
+  return `${error.message} (${error.code})`;
+}
+
+export interface CinemaJobUsageCounts {
+  total: number;
+  queued: number;
+  running: number;
+  succeeded: number;
+  failed: number;
+  byKind: Record<CinemaJobKind, number>;
+}
+
+export interface CinemaJobUsage {
+  jobs: CinemaJobUsageCounts;
+  admission: { pending: number; pendingLimit: number };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && Math.floor(value) === value;
+}
+
+function nonNegativeInteger(value: unknown, name: string): number {
+  if (!isNonNegativeInteger(value)) throw new Error(`Cinema job usage ${name} is missing or invalid.`);
+  return value;
+}
+
+export function parseCinemaJobUsage(value: unknown): CinemaJobUsage {
+  if (!isPlainObject(value)) throw new Error("Cinema job usage response is not an object.");
+  const jobs = value.jobs;
+  const admission = value.admission;
+  if (!isPlainObject(jobs)) throw new Error("Cinema job usage is missing a valid jobs object.");
+  if (!isPlainObject(admission)) throw new Error("Cinema job usage is missing a valid admission object.");
+
+  const total = nonNegativeInteger(jobs.total, "total count");
+  const queued = nonNegativeInteger(jobs.queued, "queued count");
+  const running = nonNegativeInteger(jobs.running, "running count");
+  const succeeded = nonNegativeInteger(jobs.succeeded, "succeeded count");
+  const failed = nonNegativeInteger(jobs.failed, "failed count");
+
+  const byKindRaw = isPlainObject(jobs.byKind) ? jobs.byKind : {};
+  const kindCount = (val: unknown) => (isNonNegativeInteger(val) ? val : 0);
+  const byKind = {
+    script: kindCount(byKindRaw.script),
+    preflight: kindCount(byKindRaw.preflight),
+    image: kindCount(byKindRaw.image),
+    video: kindCount(byKindRaw.video),
+    music: kindCount(byKindRaw.music),
+    render: kindCount(byKindRaw.render),
+  } satisfies Record<CinemaJobKind, number>;
+
+  const pending = nonNegativeInteger(admission.pending, "pending count");
+  const pendingLimit = nonNegativeInteger(admission.pendingLimit, "pending limit");
+
+  return {
+    jobs: { total, queued, running, succeeded, failed, byKind },
+    admission: { pending, pendingLimit },
+  };
+}
+
+export async function getCinemaJobUsage(): Promise<CinemaJobUsage> {
+  const raw = await cinemaRequest<unknown>("/jobs/usage");
+  return parseCinemaJobUsage(raw);
 }
 
 export async function cinemaRequest<T>(path: string, options: RequestInit = {}): Promise<T> {

@@ -12,12 +12,20 @@ All notable changes to ReelBinder are documented here. The format follows
 corresponds to a public deploy of the app or docs.
 
 
-## [2026-09-24] Live WebMCP catalog and safe Stage/Frame/connection repairs
+## [2026-09-24] Quota remediation: retained job history no longer blocks submissions
 
-### Added
-- The hosted Studio release `20260924-31bbdf6` now exposes the full 20-tool
-  WebMCP catalog, including typed overhead diagram, frame, cut-sync,
-  frame-history, and still-ingest tools.
+### Changed
+- The hosted Studio release `20260924-957017c` removes the retained-job-row
+  admission check. Terminal job records remain visible for recovery and audit,
+  but only the pending queue limit (2 per session / 8 global) and real
+  storage, asset, and disk headroom can block a new submission.
+- The Cinema service exposes a read-only, session-scoped
+  `/api/cinema/jobs/usage` endpoint. The Connections panel shows the pending
+  queue count and terminal history by kind, with an explicit **Check job usage**
+  control. The endpoint does not delete, reset, or retry jobs.
+- Submission error surfaces now include the actual Cinema error code
+  (for example `QUEUE_FULL`, `STORAGE_LIMIT`) so a blocked request is
+  reported accurately instead of as a generic failure.
 
 ### Fixed
 - Stage clamping and connection probes repaired so agent navigation and
@@ -27,6 +35,7 @@ corresponds to a public deploy of the app or docs.
 
 ### Notes
 - Hosted verification used bounded checks and did not admit a paid provider job.
+- No automatic retry, cleanup, archive, purge, or data deletion was added.
 
 
 ## [2026-09-11] Docs and demo refresh

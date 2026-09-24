@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertCircle,
   CheckCircle2,
   ChevronLeft,
@@ -25,9 +26,12 @@ import {
   clearConnectionProbe,
   getCinemaConnections,
   getCinemaHealth,
+  getCinemaJobUsage,
   testConnection,
+  CINEMA_JOB_KINDS,
   type CinemaConnection,
   type CinemaHealth,
+  type CinemaJobUsage,
   type ConnectionMode,
   type ConnectionTestResponse,
 } from "@/lib/cinema-client";
@@ -238,6 +242,9 @@ export function ConnectionsPanel() {
   const [probeById, setProbeById] = useState<
     Record<string, { busy: boolean; result?: ConnectionTestResponse; error?: string }>
   >({});
+  const [usage, setUsage] = useState<CinemaJobUsage | null>(null);
+  const [usageBusy, setUsageBusy] = useState(false);
+  const [usageError, setUsageError] = useState("");
   const credentialInput = useRef<HTMLInputElement>(null);
 
   // Error diagnostics
@@ -463,6 +470,18 @@ export function ConnectionsPanel() {
       setBusy(false);
     }
   };
+  const loadUsage = async () => {
+    setUsageBusy(true);
+    setUsageError("");
+    try {
+      setUsage(await getCinemaJobUsage());
+    } catch (error) {
+      setUsageError(error instanceof Error ? error.message : "Could not load job usage.");
+    } finally {
+      setUsageBusy(false);
+    }
+  };
+
   const runTest = async (connection: CinemaConnection) => {
     setProbeById((prev) => ({ ...prev, [connection.connectionId]: { busy: true } }));
     try {
@@ -1622,6 +1641,67 @@ export function ConnectionsPanel() {
           Configured means the tool is wired. Actual access depends on your connection, project and
           model permissions.
         </p>
+      </div>
+
+      {/* Session job usage */}
+      <div className="grid gap-2">
+        <h3 className="text-sm font-medium">Session job usage</h3>
+        <div className="rounded-md border border-border p-3 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Pending queue / limit</span>
+            <span className="font-mono tabular-nums">
+              {usage ? `${usage.admission.pending} / ${usage.admission.pendingLimit}` : "—"}
+            </span>
+          </div>
+          {usage && (
+            <>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-muted-foreground">Terminal history retained</span>
+                <span className="font-mono tabular-nums">{usage.jobs.total}</span>
+              </div>
+              <div className="mt-1 flex gap-3 text-muted-foreground">
+                <span>succeeded {usage.jobs.succeeded}</span>
+                <span>failed {usage.jobs.failed}</span>
+              </div>
+              {CINEMA_JOB_KINDS.some((kind) => usage.jobs.byKind[kind] > 0) && (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {CINEMA_JOB_KINDS.filter((kind) => usage.jobs.byKind[kind] > 0).map((kind) => (
+                    <span
+                      key={kind}
+                      className="inline-flex items-center gap-1 rounded bg-secondary px-1.5 py-0.5"
+                    >
+                      {kind}
+                      <span className="font-mono tabular-nums">{usage.jobs.byKind[kind]}</span>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          <p className="mt-2 text-[10px] text-muted-foreground leading-relaxed">
+            Terminal records stay for recovery and do not block new submissions. Queue-full and
+            storage errors are reported separately.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-2 w-full"
+            disabled={usageBusy}
+            onClick={() => void loadUsage()}
+          >
+            {usageBusy ? (
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Activity className="mr-1 h-3.5 w-3.5" />
+            )}
+            Check job usage
+          </Button>
+          {usageError && (
+            <p className="mt-2 text-[10px] text-destructive" role="alert">
+              {usageError}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

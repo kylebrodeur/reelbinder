@@ -13,6 +13,7 @@ import {
   CinemaJobFailure,
   CinemaRequestFailure,
   cinemaRequest,
+  formatCinemaRequestFailure,
   waitForCinemaJob,
 } from "@/lib/cinema-client";
 import {
@@ -110,7 +111,12 @@ export function RenderControl({ timeline }: { timeline: EditTimeline }) {
           setApplied(false);
         }
       } catch (failure) {
-        const message = failure instanceof Error ? failure.message : "The render could not finish.";
+        const message =
+          failure instanceof CinemaRequestFailure
+            ? formatCinemaRequestFailure(failure)
+            : failure instanceof Error
+              ? failure.message
+              : "The render could not finish.";
         const terminal =
           failure instanceof CinemaJobFailure ||
           (failure instanceof CinemaRequestFailure &&

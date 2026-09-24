@@ -29,4 +29,10 @@ ReelBinder uses Google ADK for assistant workflows, Google model adapters for su
 
 Read the reported availability or job status before submitting another request. If a job remains queued past the client timeout, keep its job ID and reconnect to check it. ReelBinder preserves stalled jobs and does not automatically submit a replacement.
 
+## Job admission and session limits
+
+The Cinema service admits a new job only when there is room in your session's pending queue and enough remaining storage, asset, and disk headroom for its output. Open **Connections** and choose **Check job usage** to see your session's pending queue count and limit, plus a read-only count of terminal job history by kind. The usage endpoint does not reset, delete, or retry anything.
+
+Finished, failed, and cancelled job records stay visible in that history for recovery and audit, but they are **not** a quota: they do not block new submissions. Only pending queue capacity and real storage, asset, or disk limits can prevent a new request. There is no automatic cleanup, archive, purge, or deletion path in the app.
+
 Disconnect services when you no longer need them. See [Architecture](/architecture) for the session and media-service boundary.
