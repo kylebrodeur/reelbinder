@@ -1,10 +1,12 @@
 /** Browser contract for the same-origin cinema service. Keys never enter Project state. */
+export type ConnectionMode = "express" | "standard" | "gemini";
+
 export interface CinemaConnection {
   connectionId: string;
   provider: "google-cloud" | "parallel";
   status: "configured";
   expiresAt: number;
-  mode?: "express" | "standard";
+  mode?: ConnectionMode;
   projectId?: string;
   location?: string;
 }
@@ -123,7 +125,6 @@ export async function waitForCinemaJob<T>(jobId: string): Promise<T> {
     "This job is still unresolved. Keep its job ID; do not submit another paid generation yet.",
   );
 }
-
 export interface ConnectionProbeResult {
   tool: "script" | "image" | "video" | "music";
   model: string;
@@ -141,9 +142,48 @@ export interface ConnectionTestResponse {
   results: ConnectionProbeResult[];
 }
 
+const connectionProbes = new Map<string, ConnectionTestResponse>();
+const connectionProbeSubscribers = new Set<() => void>();
+
+function publishConnectionProbeChange() {
+  for (const listener of connectionProbeSubscribers) listener();
+}
+
+export function getConnectionProbe(connectionId: string): ConnectionTestResponse | undefined {
+  return connectionProbes.get(connectionId);
+}
+
+export function subscribeConnectionProbes(listener: () => void): () => void {
+  connectionProbeSubscribers.add(listener);
+  return () => connectionProbeSubscribers.delete(listener);
+}
+
+export function clearConnectionProbe(connectionId: string) {
+  if (connectionProbes.delete(connectionId)) publishConnectionProbeChange();
+}
+
+export type ImageProbeReadiness = "unknown" | "verified" | "reauthenticate" | "unsupported" | "failed";
+
+/** Interpret the server-issued image probe code without turning access tests into paid jobs. */
+export function imageProbeReadiness(probe?: ConnectionTestResponse): ImageProbeReadiness {
+  const image = probe?.results.find((result) => result.tool === "image");
+  if (!image) return "unknown";
+  if (image.status === "verified") return "verified";
+  if (image.code === "401" || image.code === "403" || image.code === "TOKEN_EXPIRED") return "reauthenticate";
+  return image.code === "UNSUPPORTED_MODE" ? "unsupported" : "failed";
+}
+
+/** A failed explicit access test blocks paid image submission until the connection is repaired. */
+export function imageGenerationAvailable(imageModelConfigured: boolean, probe?: ConnectionTestResponse): boolean {
+  return imageModelConfigured && !["reauthenticate", "unsupported", "failed"].includes(imageProbeReadiness(probe));
+}
+
 export async function testConnection(connectionId: string): Promise<ConnectionTestResponse> {
-  return cinemaRequest<ConnectionTestResponse>(
+  const result = await cinemaRequest<ConnectionTestResponse>(
     `/connections/${encodeURIComponent(connectionId)}/test`,
     { method: "POST", body: JSON.stringify({}) },
   );
+  connectionProbes.set(connectionId, result);
+  publishConnectionProbeChange();
+  return result;
 }

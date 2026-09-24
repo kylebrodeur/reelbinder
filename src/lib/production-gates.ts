@@ -1,4 +1,5 @@
 import type { FrameLayerSettings } from "./frame-renderer";
+import { floorItemFitsPlan } from "./floor";
 import { sha256Hex } from "./sha256.ts";
 import type { Project, Shot } from "./types";
 
@@ -51,8 +52,13 @@ function shotFor(project: Project, shotId: string): Shot | undefined {
   return project.shots.find((candidate) => candidate.id === shotId);
 }
 
-const STRUCTURAL_FLOOR_KINDS = new Set(["wall", "bar", "door", "window", "well"]);
-const CORNER_ORIGIN_FLOOR_KINDS = new Set(["wall", "bar", "door", "window"]);
+const STRUCTURAL_FLOOR_KINDS: Record<string, true> = {
+  wall: true,
+  bar: true,
+  door: true,
+  window: true,
+  well: true,
+};
 const REVIEWED_PLAN_KEYS = [
   "version",
   "projectId",
@@ -113,15 +119,7 @@ function frameLayers(value: unknown): value is FrameLayerSettings {
 }
 
 function validFloorItem(value: Project["floor"]["items"][number]): boolean {
-  if (!value.id.trim() || !value.label.trim() || !finiteNormalized(value.x) || !finiteNormalized(value.y) ||
-      !Number.isFinite(value.w) || value.w <= 0 || !Number.isFinite(value.h) || value.h <= 0 ||
-      !Number.isFinite(value.rotation)) return false;
-  const cornerOrigin = CORNER_ORIGIN_FLOOR_KINDS.has(value.kind);
-  const left = cornerOrigin ? value.x : value.x - value.w / 2;
-  const right = cornerOrigin ? value.x + value.w : value.x + value.w / 2;
-  const top = cornerOrigin ? value.y : value.y - value.h / 2;
-  const bottom = cornerOrigin ? value.y + value.h : value.y + value.h / 2;
-  return left >= 0 && right <= 1 && top >= 0 && bottom <= 1;
+  return !!value.id.trim() && !!value.label.trim() && Number.isFinite(value.rotation) && floorItemFitsPlan(value);
 }
 
 function relativeBearing(
@@ -221,11 +219,16 @@ export function stageReadiness(project: Project, shotId: string): ProductionGate
     issues.push(issue("missing-overhead", "Attach the source overhead diagram in the binder before reviewing this setup."));
   if (!project.floor.label.trim())
     issues.push(issue("missing-floor-label", "Name the Stage floor plan so its source setup is identifiable."));
-  const structuralItems = project.floor.items.filter((item) => STRUCTURAL_FLOOR_KINDS.has(item.kind));
+  const structuralItems = project.floor.items.filter((item) => !!STRUCTURAL_FLOOR_KINDS[item.kind]);
   if (!structuralItems.length)
     issues.push(issue("missing-floor-items", "Draw structural room geography on the Stage floor plan."));
-  else if (project.floor.items.some((item) => !validFloorItem(item)))
-    issues.push(issue("invalid-floor-items", "Give every Stage item a named, finite, positive-size position inside the floor plan."));
+  else {
+    const invalidItems = project.floor.items.filter((item) => !validFloorItem(item));
+    if (invalidItems.length) {
+      const identities = invalidItems.map((item) => `${item.label.trim() || item.kind} (${item.id.trim() || "missing ID"})`).join(", ");
+      issues.push(issue("invalid-floor-items", `Fix Stage item(s) ${identities}: each needs a named, finite, positive-size position inside the floor plan.`));
+    }
+  }
   if (!project.floor.homes.length || project.floor.homes.some((home) => !home.id.trim() || !home.name.trim() ||
       !finiteNormalized(home.x) || !finiteNormalized(home.y) || !Number.isFinite(home.facing)))
     issues.push(issue("missing-floor-homes", "Add named cast home positions to the Stage floor plan."));
@@ -264,10 +267,18 @@ export function stageReadiness(project: Project, shotId: string): ProductionGate
 
   const blockingById = new Map(blocking.map((figure) => [figure.id, figure]));
   const visibleFigures = shot.sketch?.stamps?.filter((stamp) => stamp.kind === "figure") ?? [];
-  if (!visibleFigures.length || visibleFigures.some((stamp) => {
-    const figure = stamp.figureId ? blockingById.get(stamp.figureId) : undefined;
-    return !figure?.name.trim() || !shot.characters.includes(figure.name);
-  })) issues.push(issue("unlinked-frame-plan", "Link every visible Frame figure through named setup blocking and the shot's cast identity."));
+  if (!visibleFigures.length) {
+    issues.push(issue("unlinked-frame-plan", "Place every visible Frame figure through named setup blocking and the shot's cast identity."));
+  } else {
+    const invalidStamps = visibleFigures.filter((stamp) => {
+      const figure = stamp.figureId ? blockingById.get(stamp.figureId) : undefined;
+      return !figure?.name.trim() || !shot.characters.includes(figure.name);
+    });
+    if (invalidStamps.length) {
+      const identities = invalidStamps.map((stamp) => stamp.id.trim() || "missing ID").join(", ");
+      issues.push(issue("unlinked-frame-plan", `Link Frame figure stamp(s) ${identities} through named setup blocking and the shot's cast identity.`));
+    }
+  }
 
   return report(issues);
 }

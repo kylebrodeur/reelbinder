@@ -45,6 +45,10 @@
           "local-development",
           "architecture",
           {
+            "page": "webmcp",
+            "title": "WebMCP agent tools"
+          },
+          {
             "page": "slate-format",
             "title": "Project format"
           },

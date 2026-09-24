@@ -1,5 +1,5 @@
 import { matchCharacter } from "./cast";
-import { categoryForItem, defaultItemSize, figuresForShot, SET_KINDS, type FloorCategory } from "./floor";
+import { categoryForItem, clampFloorItemPosition, defaultItemSize, figuresForShot, SET_KINDS, type FloorCategory } from "./floor";
 import { resolveCatalogIdentity } from "./production-catalog";
 import { validateSnapshotProject } from "./slate-snapshot";
 import { FLOOR_KINDS, type FloorItem, type FloorKind, type Project } from "./types";
@@ -65,12 +65,13 @@ export function prepareStageDrop(project: Project, expectedProjectId: string, sh
   for (const key of ["productionItemId","markId"]) if (data[key] !== undefined && (typeof data[key] !== "string" || !data[key])) throw new Error(`Stage: invalid ${key}.`);
   if (typeof data.label !== "string") throw new Error("Stage: this item needs a label.");
   const kind = data.kind as FloorKind, size = defaultItemSize(kind);
+  const position = clampFloorItemPosition({ kind, ...point, ...size });
   const catalog = data.productionItemId ? resolveCatalogIdentity(project,String(data.productionItemId)) : null;
   if (data.productionItemId && !catalog) throw new Error("Stage: the catalog item no longer exists. Reopen the Production Book.");
-  const item: FloorItem = {id:itemId,kind,...point,...size,rotation:0,label:data.label,shotId:SET_KINDS.has(kind)?null:shotId,
-    ...(catalog ? {productionItemId:catalog.id} : {}),...(data.markId ? {markId:String(data.markId)} : {})};
+  const item: FloorItem = { id: itemId, kind, ...position, ...size, rotation: 0, label: data.label, shotId: SET_KINDS.has(kind) ? null : shotId,
+    ...(catalog ? {productionItemId:catalog.id} : {}), ...(data.markId ? {markId:String(data.markId)} : {})};
   const errors = floorLinkDiagnostics(project,item); if (errors.length) throw new Error(`Stage: ${errors.join(" ")}`);
   if (project.floor.items.some((entry) => entry.id === itemId)) throw new Error("Stage: placement ID already exists; retry the drop.");
   const items = [...project.floor.items,item];validateSnapshotProject({...project,floor:{...project.floor,items}});
-  return {kind:"item" as const,id:itemId,items};
+  return {kind:"item" as const,id:itemId,items,clamped:position.x !== point.x || position.y !== point.y};
 }

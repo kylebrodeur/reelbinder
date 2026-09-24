@@ -1,0 +1,126 @@
+---
+title: Connect an agent with WebMCP
+description: Discover and use ReelBinder Studio tools from a browser-connected MCP client.
+---
+
+ReelBinder Studio exposes a browser-side [WebMCP](https://webmachinelearning.github.io/webmcp/) tool surface. A desktop agent can discover the tools in the open Studio page and invoke bounded navigation, inspection, and approved project-edit actions through a local relay.
+
+> **Release status:** The currently deployed hosted release, `20260924-31bbdf6` at source commit `31bbdf6`, verifies **20** `document.modelContext` tools. The catalog below describes the current hosted release. Always call `webmcp_list_tools` as the runtime source of truth.
+
+The integration lives in the Studio frontend. A hosted target must be running a release that contains the WebMCP registry; a source commit alone does not change the hosted tool catalog. The tools operate on the current browser page and visitor session, not on a separate shared project database.
+
+## Connect the local relay
+
+Use Node 22 and a desktop MCP client on the same machine as the browser running ReelBinder Studio. Configure the pinned relay command in the client's MCP configuration:
+
+```json
+{
+  "mcpServers": {
+    "reelbinder-studio": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@mcp-b/webmcp-local-relay@5.1.0",
+        "--widget-origin",
+        "https://studio.reelbinder.app"
+      ]
+    }
+  }
+}
+```
+
+Open `https://studio.reelbinder.app/` in Chrome, wait for the Studio page to finish loading, then let the MCP client discover the relay tools. For local development, replace the widget origin with the exact origin of the local Studio page, such as `http://localhost:8080`.
+
+The relay binds to loopback and scans ports `9333` through `9348` by default. Chrome may ask for Local Network Access permission before the page can open the loopback connection. Keep the relay origin restriction narrow; do not use a wildcard origin for a production client configuration.
+
+The relay itself provides three helpers:
+
+- `webmcp_list_sources` — list connected browser tool sources.
+- `webmcp_list_tools` — list the tools currently registered by a source.
+- `webmcp_open_page` — open or refresh the connected Studio page.
+
+## Current hosted release
+
+The deployed hosted release `20260924-31bbdf6` (source commit `31bbdf6`) currently exposes these 20 `document.modelContext` tools:
+
+| Tool | Access | Purpose |
+| --- | --- | --- |
+| `get_ui_snapshot` | Read | Return a bounded snapshot of visible controls and their current values. |
+| `apply_ui_patch` | Approved mutation | Apply ordered actions to controls from a current snapshot revision. |
+| `get_studio_state` | Read | Return the current view, selection, hydration state, and project counts. |
+| `get_script_outline` | Read | Return bounded screenplay element summaries. |
+| `get_shot` | Read | Return a bounded summary of one setup. |
+| `set_view` | Navigation | Switch between Script, Stage, Edit, and Render. |
+| `select_shot` | Navigation | Select or clear the active setup. |
+| `select_element` | Navigation | Select or clear the active screenplay element. |
+| `board_element` | Approved mutation | Add an existing screenplay element to the shot board. |
+| `add_script_mark` | Approved mutation | Add a mark to an exact, uniquely matched screenplay passage. |
+| `patch_shot` | Approved mutation | Update the agent-safe shot notes field. |
+| `get_overhead_state` | Read | Return bounded floor items, cameras, blocking figures, and the active camera. |
+| `patch_overhead` | Approved mutation | Add or remove floor items, cameras, and blocking figures. |
+| `get_frame_state` | Read | Return frame metadata, linked cast, stamps, strokes, and annotations. |
+| `patch_frame` | Approved mutation | Place or remove frame items, strokes, and annotations. |
+| `get_cut_state` | Read | Return the revision, shot list, ordered picture clips, and non-picture clip count. |
+| `sync_shot_timeline` | Approved mutation | Apply an explicit revision-guarded picture-clip order and optional drops while preserving non-picture tracks and clip metadata. |
+| `patch_frame_history` | Approved mutation | Remove named inactive frame-history versions without allowing the active frame to be removed. |
+| `import_still` | Approved mutation | Attach a validated local raster data URL to an explicitly identified setup while preserving prior history. |
+| `stage_assistant_question` | Interaction | Stage a question in the in-app Production Assistant without changing Project data. |
+
+Use `webmcp_list_tools` as the runtime source of truth. The deployed check also verified `set_view({ view: "script" })` and `get_studio_state`; it verified the relay assets `/webmcp/embed.js`, `/webmcp/widget.html`, and `/webmcp/PROVENANCE.json`.
+
+Read tools marked `Read` or `Navigation` can be used for inspection and orientation. Project mutations are not assistant-auto-executable: the filmmaker or the Production Assistant must approve them through the existing mutation flow.
+
+## Use the diagram and framing tools
+
+The typed tools are easier to use than emitting component-specific form events. They validate the input, write through the same Zustand store as the human UI, and return fresh state readback after the mutation.
+
+### Overhead diagram
+
+`patch_overhead` accepts up to 50 ordered operations:
+
+- `add_item { kind, x, y, label? }`
+- `remove_item { id }`
+- `add_camera { x, y }`
+- `remove_camera { id }`
+- `add_figure { name, x, y }`
+- `remove_figure { id }`
+
+Coordinates use normalized `0..1` values. Floor items use the existing floor-kind vocabulary. Blocking figures must belong to the setup cast, and locked floor items cannot be removed.
+
+### Frame items
+
+`patch_frame` accepts up to 50 ordered operations. Use the semantic operations when possible:
+
+- `place_item { kind: "cast", figureId, x, y }` — place or move a linked cast figure. The figure must already exist in the setup's blocking cast.
+- `place_item { kind: "prop", x, y, id?, label? }` — add a box-style prop stamp.
+
+- `place_item { kind: "architecture", points, id? }` — add a pencil stroke for architecture or set detail.
+- `remove_item { id }` — remove a stamp, stroke, or annotation by ID.
+
+The lower-level `add_stamp`, `remove_stamp`, `add_stroke`, `remove_stroke`, `add_annotation`, and `remove_annotation` operations remain available when an agent needs exact control. Points are normalized and bounded. The mutation response includes `created`, `placed`, `updated`, `removed`, and a complete `state` readback.
+
+Frame-item selection is intentionally local UI state, not persisted Project data. Human users can use the existing Frame `Select` and `Place` controls; an agent can activate those controls through the JSON UI surface after calling `get_ui_snapshot`.
+### Cut synchronization and still history
+
+`get_cut_state` returns a project revision plus the ordered picture-clip IDs. Use that exact revision and ID list with `sync_shot_timeline` to apply a filmmaker-approved order; omit IDs to drop clips. The tool reflows picture starts from zero, preserves each retained clip's metadata, and leaves non-picture tracks unchanged. A stale project revision or clip list fails closed.
+
+`get_frame_state` includes bounded frame-history metadata. `patch_frame_history` removes only explicitly named inactive versions and rejects attempts to remove the active frame. `import_still` accepts only a local base64 PNG, JPEG, or WebP data URL, requires an exact `shotId` plus matching `setup`, and uses project/frame-history guards before preserving prior history. These tools never accept filesystem paths or arbitrary browser scripts.
+
+## JSON UI controls
+
+Use the generic UI surface for controls that are not represented by a typed Project tool:
+
+1. Call `get_ui_snapshot({})` and retain its `revision`.
+2. Apply an ordered `apply_ui_patch` using that revision.
+3. Inspect the returned per-operation readback.
+4. Re-snapshot after a stale revision, page change, or panel change.
+
+The surface uses accessible control references rather than arbitrary CSS selectors. It rejects password, token, secret, and file inputs. It does not accept generated React code or arbitrary scripts.
+
+## Browser and approval boundaries
+
+WebMCP registration belongs to the currently open Studio page. Normal Chrome tabs, installed Chrome PWAs, and browser agents that support WebMCP use the same page-side registry and browser session.
+
+A tool result does not mean that a generated take was accepted, a provider job completed, or a creative decision was approved. Keep inspection, proposal, approval, generation, and filmmaker acceptance distinct. The typed diagram and framing mutations change Project state and are covered by the existing undo history.
+
+For the implementation contract and source-level details, see the [WebMCP agent integration reference](https://github.com/kylebrodeur/reelbinder/blob/main/docs/webmcp-agent-integration.md).

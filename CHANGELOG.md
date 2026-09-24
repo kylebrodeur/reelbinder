@@ -8,6 +8,23 @@ corresponds to a public deploy of the app or docs.
 [docs-site changelog page](https://reelbinder.app/changelog) is generated from
 it by `scripts/gen-changelog-docs.mjs` — edit this file, never the generated page.
 
+## [2026-09-24] Live WebMCP catalog and safe Stage/Frame/connection repairs
+
+### Added
+- The hosted Studio release `20260924-31bbdf6` now exposes the full 20-tool
+  WebMCP catalog, including typed overhead diagram, frame, cut-sync,
+  frame-history, and still-ingest tools.
+
+### Fixed
+- Stage clamping and connection probes repaired so agent navigation and
+  provider access checks stay bounded and safe.
+- Frame item cleanup and shot-timeline sync guarded against unsafe mutations
+  while preserving non-picture tracks and clip metadata.
+
+### Notes
+- Hosted verification used bounded checks and did not admit a paid provider job.
+
+
 ## [2026-09-11] Docs and demo refresh
 
 ### Changed

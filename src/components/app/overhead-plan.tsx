@@ -35,6 +35,7 @@ import {
   cameraForShot,
   categoryForItem,
   chevronPoints,
+  clampFloorItemPosition,
   clientToFloor,
   facingFrom,
   figuresForShot,
@@ -479,30 +480,33 @@ export function OverheadPlan({
         const size = defaultItemSize(place.kind);
         const setWide = SET_KINDS.has(place.kind);
         const id = uid("fl");
+        const label =
+          place.label ||
+          (place.kind === "mark"
+            ? String(floor.items.filter((i) => i.kind === "mark").length + 1)
+            : place.kind === "bar"
+              ? "BAR"
+              : "");
+        const position = clampFloorItemPosition({ kind: place.kind, ...p, ...size });
         patchFloor({
           items: [
             ...floor.items,
             {
               id,
               kind: place.kind,
-              x: p.x,
-              y: p.y,
-              w: size.w,
-              h: size.h,
+              ...position,
+              ...size,
               rotation: 0,
-              label:
-                place.label ||
-                (place.kind === "mark"
-                  ? String(floor.items.filter((i) => i.kind === "mark").length + 1)
-                  : place.kind === "bar"
-                    ? "BAR"
-                    : ""),
+              label,
               shotId: setWide ? null : (shot?.id ?? null),
               markId: place.markId,
               productionItemId: place.productionItemId,
             },
           ],
         });
+        if (position.x !== p.x || position.y !== p.y) {
+          toast.message(`Stage: placed ${label || place.kind} inside the floor plan.`);
+        }
         placed = { kind: "item", id };
       }
       select(placed);
@@ -817,8 +821,12 @@ export function OverheadPlan({
                     if (stageItemLocked(current, placed, locks)) throw new Error("Stage: unlock this category before placing an item.");
                   } else if (locks.has("cast")) throw new Error("Stage: unlock Cast before placing a person.");
                   capture("Drop onto stage");
-                  if (result.kind === "item") patchFloor({ items: result.items });
-                  else setBlocking(result.shotId, { figures: result.figures });
+                  if (result.kind === "item") {
+                    patchFloor({ items: result.items });
+                    if (result.clamped) toast.message("Stage: placed the item inside the floor plan.");
+                  } else {
+                    setBlocking(result.shotId, { figures: result.figures });
+                  }
                   select({ kind: result.kind, id: result.id });
                 } catch (error) {
                   toast.error(error instanceof Error ? error.message : "Stage: unable to place this item.");

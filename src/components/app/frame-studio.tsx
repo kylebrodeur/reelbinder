@@ -1,12 +1,20 @@
 import { KeyFrameGuidance } from "@/components/app/key-frame-guidance";
-import { ExternalLink, Film, ImageIcon, Loader2, RefreshCw, Sparkles, Trash2, Upload, Wand2 } from "lucide-react";
+import { ExternalLink, Film, ImageIcon, Loader2, RefreshCw, Sparkles, Upload, Wand2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BlockingCanvas } from "@/components/app/blocking-canvas";
 import { ConnectionsControl } from "@/components/app/cinema-connections";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { getCinemaConnections, getCinemaHealth, type CinemaConnection } from "@/lib/cinema-client";
+import {
+  getCinemaConnections,
+  getCinemaHealth,
+  getConnectionProbe,
+  imageGenerationAvailable,
+  imageProbeReadiness,
+  subscribeConnectionProbes,
+  type CinemaConnection,
+} from "@/lib/cinema-client";
 import { appendFrameVersions, imageReferenceAvailable } from "@/lib/cinema-images";
 import { continueFromPrevious, generateShotFrame, restyleShotFrame, resumeShotImage } from "@/lib/imagine-flow";
 import { getImageRecovery, clearResolvedImageRecovery } from "@/lib/image-recovery";
@@ -50,6 +58,7 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   const [imageReady, setImageReady] = useState(false);
   const [model, setModel] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [, setProbeRevision] = useState(0);
   const [lastJobId, setLastJobId] = useState<string | null>(null);
   const [lastResult, setLastResult] = useState<{ url: string; label: string } | null>(null);
   const [planGuide, setPlanGuide] = useState<FrameCompositionGuide | null>(null);
@@ -59,7 +68,9 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   const fileRef = useRef<HTMLInputElement>(null);
   const index = project.shots.findIndex((candidate) => candidate.id === shot.id);
   const previous = index > 0 ? project.shots[index - 1] : undefined;
-  const canRun = !!connectionId && imageReady && !busy && !loading && !recoveryState.record && !recoveryState.error;
+  const connectionProbe = connectionId ? getConnectionProbe(connectionId) : undefined;
+  const imageConnectionReadiness = imageProbeReadiness(connectionProbe);
+  const canRun = !!connectionId && imageGenerationAvailable(imageReady, connectionProbe) && !busy && !loading && !recoveryState.record && !recoveryState.error;
   const canEdit = imageReferenceAvailable(shot.frameUrl);
   const canReferencePrevious = imageReferenceAvailable(previous?.frameUrl ?? null);
   const currentAsset = shot.frameHistory?.find((version) => version.url === shot.frameUrl)?.asset;
@@ -111,6 +122,7 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   useEffect(() => {
     void refresh();
   }, [refresh]);
+  useEffect(() => subscribeConnectionProbes(() => setProbeRevision((revision) => revision + 1)), []);
   useEffect(() => {
     setLastResult(null);
     setLastJobId(null);
@@ -344,9 +356,15 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
           <span className="block mt-0.5 text-[11px]">Click <strong>Connections</strong> above to add your key.</span>
         </div>
       )}
-      {connectionError && connections.length > 0 ? (
+      {(connectionError || (imageConnectionReadiness !== "unknown" && imageConnectionReadiness !== "verified")) && connections.length > 0 ? (
         <p className="text-xs text-destructive" role="status">
-          {connectionError}
+          {connectionError ?? (
+            imageConnectionReadiness === "reauthenticate"
+              ? "Image access was rejected. Open Connections, renew or reconnect, then test image access again."
+              : imageConnectionReadiness === "unsupported"
+                ? "This connection mode does not support images. Choose a connection mode with image access."
+                : "Image access failed its last test. Open Connections, correct the issue, then test image access again."
+          )}
         </p>
       ) : null}
       {/* Direction & Prompt Synthesis Tokens */}
@@ -559,30 +577,23 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
         </p>
       ) : null}
       {shot.frameHistory?.length ? (
-        <label className="block text-xs text-muted-foreground">
-          <span className="mb-1 block">Frame history · {shot.frameHistory.length} versions</span>
-          <select
-            className="h-9 w-full rounded-sm border border-border bg-background px-2 text-foreground"
-            value={shot.frameUrl ?? ""}
-            disabled={!!busy}
-            onChange={(event) => {
-              const version = shot.frameHistory?.find((item) => item.url === event.target.value);
-              if (version?.url) patchShot(shot.id, { frameUrl: version.url, frameKind: version.kind });
-            }}
-          >
-            {!shot.frameHistory.some((version) => version.url === shot.frameUrl) ? (
-              <option value={shot.frameUrl ?? ""}>Current frame</option>
-            ) : null}
-            {shot.frameHistory.map((version, i) => (
-              <option key={version.id} value={version.url || `retired:${version.id}`} disabled={!version.url}>
-                {i + 1} · {version.url ? version.kind : "Historical reference retired"}
-                {!version.url ? "" : version.asset
-                  ? ` · ${String(version.asset.provenance.model ?? "Generated")}`
-                  : " · Attached"}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <span className="block">Frame history · {shot.frameHistory.length} versions</span>
+          <p>Active review frame: {shot.frameUrl ? shot.frameKind : "none selected"}.</p>
+          <details>
+            <summary className="cursor-pointer">Historical candidates · not in the active review queue</summary>
+            <ul className="mt-1 list-disc space-y-0.5 pl-4">
+              {shot.frameHistory.filter((version) => version.url !== shot.frameUrl).map((version, index) => (
+                <li key={version.id}>
+                  {index + 1} · {version.kind} · {version.asset
+                    ? String(version.asset.provenance.model ?? "Generated")
+                    : "Attached"} · historical only
+                </li>
+              ))}
+              {!shot.frameHistory.some((version) => version.url !== shot.frameUrl) ? <li>None</li> : null}
+            </ul>
+          </details>
+        </div>
       ) : null}
       {currentAsset ? (
         <p className="text-xs text-muted-foreground">
@@ -678,62 +689,6 @@ export function FrameStudio({ shot }: { shot: Shot }) {
           })}
         </div>
       ) : null}
-      {shot.sketch.stamps.length ? (
-        <div className="space-y-2 rounded-md border border-border p-2" role="region" aria-label="Frame items">
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-xs font-semibold text-muted-foreground">Frame items</span>
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs text-destructive hover:text-destructive"
-              onClick={() => setSketch(shot.id, { ...shot.sketch, stamps: [] })}
-            >
-              Clear frame items
-            </Button>
-          </div>
-          <ul className="space-y-1" role="list">
-            {shot.sketch.stamps.map((stamp) => {
-              const figure = stamp.figureId
-                ? cast.find((candidate) => candidate.id === stamp.figureId)
-                : undefined;
-              const label =
-                stamp.kind === "figure"
-                  ? figure?.name || stamp.label || "Unnamed figure"
-                  : stamp.label || "Unnamed prop";
-              return (
-                <li
-                  key={stamp.id}
-                  className="flex items-center justify-between gap-2 rounded-sm border border-border/60 bg-background px-2 py-1"
-                  role="listitem"
-                >
-                  <span className="min-w-0 truncate text-xs">
-                    {label}
-                    <span className="ml-1.5 text-[10px] text-muted-foreground">
-                      {stamp.kind === "figure" ? "Figure" : "Prop"}
-                    </span>
-                  </span>
-                  <Button
-                    type="button"
-                    size="icon-sm"
-                    variant="ghost"
-                    aria-label={`Remove ${label} from frame`}
-                    title={`Remove ${label} from frame`}
-                    onClick={() =>
-                      setSketch(shot.id, {
-                        ...shot.sketch,
-                        stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
-                      })
-                    }
-                  >
-                    <Trash2 className="size-3.5" />
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : null}
       <BlockingCanvas
         layers={frameLayers}
         onLayersChange={setFrameLayers}
@@ -751,6 +706,30 @@ export function FrameStudio({ shot }: { shot: Shot }) {
         onAnnotations={(annotations) => setAnnotations(shot.id, annotations)}
         onLinkedMove={moveLinkedFigure}
       />
+      {shot.sketch.stamps.filter((stamp) => !stamp.figureId).length ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+          <p className="font-medium">Frame items needing review</p>
+          <ul className="mt-1 space-y-1">
+            {shot.sketch.stamps.filter((stamp) => !stamp.figureId).map((stamp) => (
+              <li key={stamp.id} className="flex items-center justify-between gap-2">
+                <span>{stamp.label?.trim() || `${stamp.kind} stamp ${stamp.id}`}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-label={`Remove frame item ${stamp.id}`}
+                  onClick={() => setSketch(shot.id, {
+                    ...shot.sketch,
+                    stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
+                  })}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <ImagineActions frameLayers={frameLayers} shot={shot} />
     </div>
   );

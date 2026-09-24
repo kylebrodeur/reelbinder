@@ -22,11 +22,13 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   cinemaRequest,
+  clearConnectionProbe,
   getCinemaConnections,
   getCinemaHealth,
   testConnection,
   type CinemaConnection,
   type CinemaHealth,
+  type ConnectionMode,
   type ConnectionTestResponse,
 } from "@/lib/cinema-client";
 import {
@@ -34,6 +36,10 @@ import {
   clearSetupState,
   loadSetupState,
   saveSetupState,
+  buildGoogleOAuthUrl,
+  parseOAuthCallback,
+  clearOAuthUrlParams,
+  exchangeOAuthCode,
   type GoogleSetupState,
   type GoogleSetupStep,
 } from "@/lib/cinema-onboarding";
@@ -69,6 +75,7 @@ export function ConnectionsControl() {
 
 function connectionName(connection: CinemaConnection) {
   if (connection.provider === "parallel") return "Parallel Search";
+  if (connection.mode === "gemini") return "Google Cloud Gemini";
   return connection.mode === "standard"
     ? `Google Cloud · ${connection.projectId ?? "project"}`
     : "Google Cloud Express";
@@ -90,7 +97,6 @@ function expiryDescription(expiresAt: number) {
   });
   return `expires ${absolute} · ${remaining} remaining`;
 }
-
 export function ConnectionRow({
   connection,
   probe,
@@ -109,13 +115,21 @@ export function ConnectionRow({
   compact?: boolean;
 }) {
   const result = probe?.result;
-  const verified = result && result.results.every((r) => r.status === "verified");
-  const firstFailure = result?.results.find((r) => r.status === "failed");
+  const verified = Boolean(result && result.results.length > 0 && result.results.every((item) => item.status === "verified"));
+  const firstFailure = result?.results.find((item) => item.status === "failed");
+  const authFailure = result?.results.find((item) =>
+    item.status === "failed" && ["401", "403", "TOKEN_EXPIRED"].includes(item.code),
+  );
+  const unavailableTools = result?.results.filter(
+    (item) => item.status === "failed" && item.code === "UNSUPPORTED_MODE",
+  ) ?? [];
   const statusText = verified
     ? "Access verified"
-    : firstFailure
-      ? `${firstFailure.tool} ${firstFailure.code}`
-      : "Access untested";
+    : firstFailure?.code === "UNSUPPORTED_MODE"
+      ? `${firstFailure.tool} unavailable in this connection mode`
+      : firstFailure
+        ? `${firstFailure.tool} ${firstFailure.code}`
+        : "Access untested";
 
   return (
     <div
@@ -132,15 +146,16 @@ export function ConnectionRow({
           <div className="mt-1.5 flex flex-wrap gap-1">
             {result.results.map((item) => (
               <span
-                key={item.tool}
                 className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                   item.status === "verified"
                     ? "bg-primary/10 text-primary"
-                    : "bg-destructive/10 text-destructive"
+                    : item.code === "UNSUPPORTED_MODE"
+                      ? "bg-muted text-muted-foreground"
+                      : "bg-destructive/10 text-destructive"
                 }`}
                 title={item.message}
               >
-                {item.tool}: {item.status}
+                {item.tool}: {item.status === "failed" && item.code === "UNSUPPORTED_MODE" ? "unavailable" : item.status}
                 {item.status === "failed" && item.code && (
                   <span className="opacity-80">({item.code})</span>
                 )}
@@ -148,6 +163,16 @@ export function ConnectionRow({
             ))}
           </div>
         )}
+        {authFailure && !probe?.busy ? (
+          <p className="mt-1 text-[10px] text-destructive">
+            {authFailure.tool} access was rejected. Renew or reconnect, then test again.
+          </p>
+        ) : null}
+        {unavailableTools.length && !probe?.busy ? (
+          <p className="mt-1 text-[10px] text-muted-foreground">
+            {unavailableTools.map((item) => item.tool).join(" and ")} {unavailableTools.length === 1 ? "is" : "are"} unavailable in this connection mode; renewal will not enable it.
+          </p>
+        ) : null}
         {probe?.error && !probe?.busy && (
           <p className="mt-1 text-[10px] text-destructive">{probe.error}</p>
         )}
@@ -176,6 +201,7 @@ export function ConnectionRow({
         <Button
           size="sm"
           variant="ghost"
+          aria-label={`Disconnect ${connectionName(connection)}`}
           disabled={disabled}
           onClick={() => onDisconnect(connection)}
         >
@@ -186,6 +212,7 @@ export function ConnectionRow({
     </div>
   );
 }
+
 
 export function ConnectionsPanel() {
   const [tab, setTab] = useState<"guided" | "direct">("guided");
@@ -199,7 +226,7 @@ export function ConnectionsPanel() {
 
   // Direct connection form state
   const [provider, setProvider] = useState<CinemaConnection["provider"]>("google-cloud");
-  const [mode, setMode] = useState<"express" | "standard">("express");
+  const [mode, setMode] = useState<ConnectionMode>("express");
   const [projectId, setProjectId] = useState("");
   const [expiresMinutes, setExpiresMinutes] = useState(60);
   const [key, setKey] = useState("");
@@ -240,6 +267,57 @@ export function ConnectionsPanel() {
     };
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const callback = parseOAuthCallback(new URLSearchParams(window.location.search));
+    if (callback) {
+      const saved = loadSetupState();
+      clearOAuthUrlParams();
+      setTab("guided");
+      if (saved.oauthClientId && saved.oauthClientSecret) {
+        setBusy(true);
+        setMessage("Exchanging Google authorization code for credentials…");
+        const redirectUri =
+          saved.oauthRedirectUri ||
+          `${window.location.origin}${window.location.pathname}`;
+        exchangeOAuthCode({
+          clientId: saved.oauthClientId,
+          clientSecret: saved.oauthClientSecret,
+          code: callback.code,
+          redirectUri,
+        })
+          .then((tokens) => {
+            setKey(tokens.accessToken);
+            setRefreshToken(tokens.refreshToken || "");
+            setClientId(saved.oauthClientId);
+            setClientSecret(saved.oauthClientSecret);
+            setShowRefreshableFields(true);
+            updateSetup({
+              step: "credentials",
+              lastError: null,
+            });
+            setMessage(
+              "Google authorization verified and refresh credentials retrieved. Save your connection to continue.",
+            );
+          })
+          .catch((err) => {
+            const classified = classifyConnectionError(err);
+            setClassifiedError(classified);
+            setMessage(`OAuth exchange failed: ${err.message}`);
+          })
+          .finally(() => {
+            setBusy(false);
+          });
+      } else {
+        updateSetup({
+          step: "credentials",
+          lastError: null,
+        });
+        setMessage("Authorization code received. Enter your client credentials to complete setup.");
+      }
+    }
+  }, []);
+
   const updateSetup = (patch: Partial<GoogleSetupState>) => {
     setSetupState((prev) => {
       const updated = { ...prev, ...patch };
@@ -258,7 +336,7 @@ export function ConnectionsPanel() {
 
   const connectCredential = async (params: {
     provider: CinemaConnection["provider"];
-    mode?: "express" | "standard";
+    mode?: ConnectionMode;
     key: string;
     projectId?: string;
     expiresMinutes?: number;
@@ -300,6 +378,14 @@ export function ConnectionsPanel() {
       );
 
       const updated = await getCinemaConnections();
+      if (renewal) {
+        clearConnectionProbe(renewal.connectionId);
+        setProbeById((previous) => {
+          const next = { ...previous };
+          delete next[renewal.connectionId];
+          return next;
+        });
+      }
       setConnections(updated);
       setRenewing(null);
       setMessage(
@@ -363,6 +449,12 @@ export function ConnectionsPanel() {
     setBusy(true);
     try {
       await cinemaRequest(`/connections/${encodeURIComponent(id)}`, { method: "DELETE" });
+      clearConnectionProbe(id);
+      setProbeById((previous) => {
+        const next = { ...previous };
+        delete next[id];
+        return next;
+      });
       setConnections(await getCinemaConnections());
       setMessage("Disconnected. Already submitted provider jobs may still finish.");
     } catch (error) {
@@ -371,7 +463,6 @@ export function ConnectionsPanel() {
       setBusy(false);
     }
   };
-
   const runTest = async (connection: CinemaConnection) => {
     setProbeById((prev) => ({ ...prev, [connection.connectionId]: { busy: true } }));
     try {
@@ -390,6 +481,7 @@ export function ConnectionsPanel() {
       }));
     }
   };
+
 
   const guidedSteps: { id: GoogleSetupStep; label: string }[] = [
     { id: "mode", label: "1. Mode" },
@@ -505,6 +597,24 @@ export function ConnectionsPanel() {
                   </div>
                   <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
                     Quick setup for lightweight tasks: Script, Preflight analysis, and Images. Video generation and Music are not available with an API key.
+                  </p>
+                </div>
+                <div
+                  className={`cursor-pointer rounded-lg border p-4 transition-colors ${
+                    setupState.mode === "gemini"
+                      ? "border-primary bg-primary/5"
+                      : "border-border hover:border-muted-foreground/50"
+                  }`}
+                  onClick={() => updateSetup({ mode: "gemini" })}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Gemini API Key</span>
+                    {setupState.mode === "gemini" && (
+                      <CheckCircle2 className="h-4 w-4 text-primary" />
+                    )}
+                  </div>
+                  <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed">
+                    One key from Google AI Studio for Script, Preflight analysis, Images, Video and Music. Billing is attached to the key's project.
                   </p>
                 </div>
               </div>
@@ -709,17 +819,110 @@ export function ConnectionsPanel() {
                 <h4 className="text-sm font-semibold">
                   {setupState.mode === "standard"
                     ? "Step 5: Connect Google Cloud Credentials"
-                    : "Step 2: Connect Express API Key"}
+                    : setupState.mode === "gemini"
+                      ? "Step 2: Connect Gemini API Key"
+                      : "Step 2: Connect Express API Key"}
                 </h4>
                 <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
                   {setupState.mode === "standard"
-                    ? "Generate an OAuth access token using the Google Cloud CLI, or enter your token below."
-                    : "Obtain an API key from Google Cloud Console credentials."}
+                    ? "Connect via browser OAuth with auto-refresh, or provide a manual access token."
+                    : setupState.mode === "gemini"
+                      ? "Obtain an authorization key from Google AI Studio. Project, billing and API enablement are handled in AI Studio."
+                      : "Obtain an API key from Google Cloud Console credentials."}
                 </p>
               </div>
 
               {setupState.mode === "standard" ? (
                 <>
+                  {/* Browser OAuth Flow */}
+                  <div className="rounded-md border border-border p-3.5 bg-secondary/20">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-foreground">
+                        Browser OAuth Sign-In (Recommended)
+                      </span>
+                      <span className="text-[11px] text-primary font-medium">Automatic Refresh</span>
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+                      Authorize directly in your browser using an OAuth 2.0 Web Client. ReelBinder uses your refresh token to automatically renew access tokens during long sessions so video generation and render jobs never stall.
+                    </p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      <label className="grid gap-1 text-xs">
+                        OAuth Web Client ID
+                        <Input
+                          value={clientId}
+                          onChange={(e) => {
+                            setClientId(e.target.value);
+                            updateSetup({ oauthClientId: e.target.value.trim() });
+                          }}
+                          placeholder="...apps.googleusercontent.com"
+                          autoComplete="off"
+                          spellCheck={false}
+                          disabled={busy}
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs">
+                        OAuth Client Secret
+                        <Input
+                          type="password"
+                          value={clientSecret}
+                          onChange={(e) => {
+                            setClientSecret(e.target.value);
+                            updateSetup({ oauthClientSecret: e.target.value.trim() });
+                          }}
+                          placeholder="GOCSPX-..."
+                          autoComplete="off"
+                          spellCheck={false}
+                          disabled={busy}
+                        />
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <a
+                        href={`https://console.cloud.google.com/apis/credentials/oauthclient?project=${encodeURIComponent(
+                          setupState.projectId || "",
+                        )}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 text-xs text-primary underline"
+                      >
+                        Create OAuth Web Client <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy || !clientId.trim() || !clientSecret.trim()}
+                        onClick={() => {
+                          const stateNonce = crypto.randomUUID();
+                          const redirectUri = `${window.location.origin}${window.location.pathname}`;
+                          updateSetup({
+                            oauthClientId: clientId.trim(),
+                            oauthClientSecret: clientSecret.trim(),
+                            oauthStateNonce: stateNonce,
+                            oauthRedirectUri: redirectUri,
+                            step: "credentials",
+                          });
+                          const authUrl = buildGoogleOAuthUrl({
+                            clientId: clientId.trim(),
+                            redirectUri,
+                            state: stateNonce,
+                          });
+                          window.location.href = authUrl;
+                        }}
+                      >
+                        Set up Google (Authorize in Browser)
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="relative my-1 text-center">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-border" />
+                    </div>
+                    <div className="relative flex justify-center text-xs">
+                      <span className="bg-background px-2 text-muted-foreground">or enter manual token</span>
+                    </div>
+                  </div>
+
                   <div className="rounded-md bg-secondary/50 p-3 text-xs leading-relaxed font-mono">
                     <p className="text-muted-foreground font-sans mb-1">Generate a fresh token via terminal:</p>
                     <p className="select-all">gcloud auth print-access-token</p>
@@ -796,22 +999,40 @@ export function ConnectionsPanel() {
                       </div>
                     )}
                   </div>
+
+                  <div className="rounded-md bg-muted/40 border border-border/60 p-3 text-xs leading-relaxed text-muted-foreground">
+                    <p className="font-medium text-foreground">Encrypted Session Storage</p>
+                    <p className="mt-1">
+                      Credentials (including refresh tokens) are encrypted in server session storage with AES-256 (Fernet) and never written to plain text or shared across visitors. When auto-refresh is configured, the server automatically refreshes short-lived access tokens using your client credentials without interrupting queued video or render jobs.
+                    </p>
+                  </div>
                 </>
               ) : (
                 <>
                   <div className="rounded-md border border-border p-3 text-xs leading-relaxed text-muted-foreground">
-                    <p>Obtain an API key from Google Cloud Console:</p>
+                    <p>
+                      {setupState.mode === "gemini"
+                        ? "Obtain an authorization key from Google AI Studio. Billing is attached to the key's project."
+                        : "Obtain an API key from Google Cloud Console:"}
+                    </p>
                     <a
-                      href="https://console.cloud.google.com/apis/credentials"
+                      href={
+                        setupState.mode === "gemini"
+                          ? "https://aistudio.google.com/app/apikey"
+                          : "https://console.cloud.google.com/apis/credentials"
+                      }
                       target="_blank"
                       rel="noreferrer"
                       className="mt-1.5 inline-flex items-center gap-1 font-medium text-primary underline"
                     >
-                      Open Google Cloud Credentials <ExternalLink className="h-3 w-3" />
+                      {setupState.mode === "gemini"
+                        ? "Open Google AI Studio"
+                        : "Open Google Cloud Credentials"}{" "}
+                      <ExternalLink className="h-3 w-3" />
                     </a>
                   </div>
                   <label className="grid gap-1.5 text-sm">
-                    Google Cloud Express API Key
+                    {setupState.mode === "gemini" ? "Gemini API Key" : "Google Cloud Express API Key"}
                     <Input
                       type="password"
                       value={key}
@@ -982,16 +1203,24 @@ export function ConnectionsPanel() {
                   <p className="text-xs text-muted-foreground">No active connections found.</p>
                 ) : (
                   connections.map((conn) => (
-                    <ConnectionRow
+                    <div
                       key={conn.connectionId}
-                      connection={conn}
-                      probe={probeById[conn.connectionId]}
-                      onTest={runTest}
-                      onRenew={beginRenewal}
-                      onDisconnect={(c) => void disconnect(c.connectionId)}
-                      disabled={busy}
-                      compact
-                    />
+                      className="flex items-center justify-between border-b border-border py-2 text-xs"
+                    >
+                      <div>
+                        <p className="font-medium">{connectionName(conn)}</p>
+                        <p className="text-muted-foreground">
+                          {expiryDescription(conn.expiresAt)}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => void disconnect(conn.connectionId)}
+                      >
+                        <Unplug className="h-3.5 w-3.5 mr-1" /> Disconnect
+                      </Button>
+                    </div>
                   ))
                 )}
               </div>
@@ -1033,13 +1262,14 @@ export function ConnectionsPanel() {
               onChange={(event) => {
                 const value = event.target.value;
                 setProvider(value === "parallel" ? "parallel" : "google-cloud");
-                if (value !== "parallel") setMode(value as "express" | "standard");
+                if (value !== "parallel") setMode(value as ConnectionMode);
                 setKey("");
                 setClassifiedError(null);
               }}
               disabled={busy || !!renewing}
             >
               <option value="express">Google Cloud Express · API key</option>
+              <option value="gemini">Google Cloud Gemini · API key</option>
               <option value="standard">Google Cloud project · access token</option>
               <option value="parallel">Parallel Search</option>
             </select>
@@ -1075,6 +1305,32 @@ export function ConnectionsPanel() {
                     >
                       Enable Vertex AI
                     </a>
+                  </p>
+                </>
+              ) : mode === "gemini" ? (
+                <>
+                  <p>
+                    <span className="font-medium text-foreground">What you need:</span> a Gemini API
+                    key from Google AI Studio.
+                  </p>
+                  <p>
+                    Use it for Script, Preflight analysis, Images, Video and Music. Billing is attached
+                    to the key's project.
+                  </p>
+                  <p>
+                    <span className="font-medium text-foreground">Where to get it:</span>{" "}
+                    <a
+                      className="underline"
+                      href="https://aistudio.google.com/app/apikey"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Google AI Studio
+                    </a>
+                  </p>
+                  <p>
+                    Retention is 24 hours by default, up to seven days, and never outlives this
+                    visitor session.
                   </p>
                 </>
               ) : (
@@ -1296,6 +1552,10 @@ export function ConnectionsPanel() {
               session or operator policy can shorten that.
             </p>
             <p>
+              Gemini API keys stay connected for up to one day by default and at most seven days;
+              they never outlive this visitor session.
+            </p>
+            <p>
               Google Cloud OAuth access tokens expire at the submitted token time and never stay
               connected longer than one hour (unless configured with refresh credentials).
             </p>
@@ -1327,7 +1587,7 @@ export function ConnectionsPanel() {
             probe={probeById[connection.connectionId]}
             onTest={runTest}
             onRenew={beginRenewal}
-            onDisconnect={(c) => void disconnect(c.connectionId)}
+            onDisconnect={(item) => void disconnect(item.connectionId)}
             disabled={busy}
           />
         ))}

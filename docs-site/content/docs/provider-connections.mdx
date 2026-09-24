@@ -7,11 +7,17 @@ ReelBinder separates the editor from generation services. You can work with exis
 
 ## Connect your own services
 
-Open ReelBinder's provider connection controls and use the supported connection flow for your deployment. Confirm the project, region and model where those options are shown. Each visitor supplies their own connection; access to the app is not permission to use another person's provider credentials.
+Open ReelBinder's provider connection controls and use the supported connection flow for your deployment. Google Cloud connections use the selected project's Vertex AI access. If your deployment offers **Gemini API Key**, that route uses a Gemini key instead of a Google Cloud project connection. Each visitor supplies their own connection; access to the app is not permission to use another person's provider credentials.
 
 Connection availability depends on your provider account, enabled APIs, permissions and model access. A connected account does not make every tool available.
 
-Google + Parallel research requires the Vertex AI API to be enabled on the Google Cloud project selected in your Google connection. Connect Parallel separately so research results can include citations.
+Google Cloud connections require the Vertex AI API on the selected project. Connect Parallel separately so research results can include citations.
+
+## Check access before generating
+
+After saving a Google connection, choose **Test**. ReelBinder runs authorization and access probes and shows results for each supported tool. The test does not create content or submit a paid generation job.
+
+A verified result confirms that the checked request path accepted the connection. It does not guarantee a later generation will succeed, create a take, or approve a creative decision.
 
 ## Review before running
 

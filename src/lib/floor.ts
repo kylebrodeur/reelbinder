@@ -309,6 +309,44 @@ export function defaultItemSize(kind: FloorKind): { w: number; h: number } {
   return { w: 0.05, h: 0.08 };
 }
 
+/** Walls and openings are positioned from their top-left corner; other items use their centre. */
+export const CORNER_ORIGIN_FLOOR_KINDS: Partial<Record<FloorKind, true>> = {
+  wall: true,
+  bar: true,
+  door: true,
+  window: true,
+};
+
+export function floorItemBounds(item: Pick<FloorItem, "kind" | "x" | "y" | "w" | "h">) {
+  const cornerOrigin = !!CORNER_ORIGIN_FLOOR_KINDS[item.kind];
+  return {
+    left: cornerOrigin ? item.x : item.x - item.w / 2,
+    right: cornerOrigin ? item.x + item.w : item.x + item.w / 2,
+    top: cornerOrigin ? item.y : item.y - item.h / 2,
+    bottom: cornerOrigin ? item.y + item.h : item.y + item.h / 2,
+  };
+}
+
+export function floorItemFitsPlan(item: Pick<FloorItem, "kind" | "x" | "y" | "w" | "h">): boolean {
+  if (![item.x, item.y, item.w, item.h].every(Number.isFinite) || item.w <= 0 || item.h <= 0) return false;
+  const { left, right, top, bottom } = floorItemBounds(item);
+  return left >= 0 && right <= 1 && top >= 0 && bottom <= 1;
+}
+
+/** Keep a newly created item wholly inside the normalized Stage plan. */
+export function clampFloorItemPosition(item: Pick<FloorItem, "kind" | "x" | "y" | "w" | "h">): Point {
+  const cornerOrigin = !!CORNER_ORIGIN_FLOOR_KINDS[item.kind];
+  const insetX = cornerOrigin ? item.w : item.w / 2;
+  const insetY = cornerOrigin ? item.h : item.h / 2;
+  if (![item.x, item.y, insetX, insetY].every(Number.isFinite) || insetX > 0.5 || insetY > 0.5) {
+    return { x: item.x, y: item.y };
+  }
+  return {
+    x: Math.min(1 - insetX, Math.max(insetX, item.x)),
+    y: Math.min(1 - insetY, Math.max(insetY, item.y)),
+  };
+}
+
 export function layerVisible(
   ownerShotId: string | null | undefined,
   currentShotId: string | null,

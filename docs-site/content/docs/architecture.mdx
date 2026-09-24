@@ -23,9 +23,13 @@ flowchart TB
 
 The browser keeps the editable Project; Cinema manages session data, media and jobs behind the gateway. Each visitor connects their own services. Requests do not fall back to the server owner's credentials. Parallel supports optional research, while FFmpeg assembles picture and sound without an AI connection.
 
+The browser also registers the Studio's bounded WebMCP tools on the current page. A local relay can expose those tools to a desktop MCP client, while the Project remains in the current visitor's browser session.
+
+See [WebMCP agent tools](/webmcp) for the relay setup, tool catalog, approval boundary, and typed overhead/frame operations.
+
 | Layer | Responsibilities |
 |---|---|
-| React and TanStack Start | Script, Stage, Frame, playback, editing and user controls |
+| React and TanStack Start | Script, Stage, Frame, playback, editing, user controls and the page-side WebMCP registry |
 | Zustand Project state | Authored edits, persistence, undo and Project replacement |
 | Same-origin Cinema gateway | Routes editor requests to the media service |
 | Hosted Cinema service (not included here) | Session isolation, connection expiry, job admission, assets and rendering |
