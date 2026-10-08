@@ -334,6 +334,8 @@ function blockingStudioHarness({ foreignMark = "stamp" } = {}) {
     ImagineActions: "ImagineActions",
     OverheadPlan: "OverheadPlan",
     OriginalInset: "OriginalInset",
+    // Blocking-studio composes the production assistant prompt card next to the canvas.
+    StagePromptCard: () => null,
     DropdownMenu: "DropdownMenu",
     DropdownMenuTrigger: "DropdownMenuTrigger",
     DropdownMenuContent: "DropdownMenuContent",

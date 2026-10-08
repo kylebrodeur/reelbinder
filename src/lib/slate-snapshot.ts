@@ -2,7 +2,7 @@ import type { Project } from "./types";
 import { productionItemMetadata } from "./production-catalog";
 import { parseFramePlanReviewFingerprint } from "./production-gates";
 import { validateScriptCommentThreads } from "./script-comments";
-import { applyPublicDemoMediaPolicy } from "./demo-media-provenance";
+import { retirePreHackathonDemoMedia } from "./demo-media-provenance";
 import { pictureAudioGain, validateTimelineAudioClips } from "./timeline-audio";
 import { BINDER_TABS, CAMERA_ANGLES, CAMERA_MOVEMENTS, COVERAGE_SIZES, EVENT_KINDS, FLOOR_KINDS, LINE_COLORS, MARK_TAGS, SCREEN_DIRECTIONS, SCRIPT_KINDS, TARGETS, TIMELINE_TRACKS, TIMES_OF_DAY } from "./types";
 
@@ -305,5 +305,5 @@ export function parseProjectJson(source: string): Project {
 }
 
 export function parseProjectSnapshot(source: string): Project {
-  return applyPublicDemoMediaPolicy(decodeProjectJson(source, true));
+  return retirePreHackathonDemoMedia(decodeProjectJson(source, true));
 }

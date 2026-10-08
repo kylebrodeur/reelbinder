@@ -108,6 +108,24 @@ _STUDIO_TOOLS: tuple[StudioToolDescriptor, ...] = (
         True,
     ),
     _tool(
+        "get_production_checks",
+        "List the current production checks: local preflight findings and stage continuity checks for the focused setup, with title, detail, and the setup/element id each concerns.",
+        {"type": "object", "properties": {}, "required": []},
+        {"readOnlyHint": True},
+        True,
+    ),
+    _tool(
+        "search_parallel",
+        "Run one Parallel web search on the given question and return cited http(s) sources for facts the project does not record. Consumes a Parallel research credit.",
+        {
+            "type": "object",
+            "properties": {"question": {"type": "string", "minLength": 1, "maxLength": 4000}},
+            "required": ["question"],
+        },
+        {"readOnlyHint": True},
+        True,
+    ),
+    _tool(
         "get_script_outline",
         "List script elements with bounded text. Optional limit (1..500) caps element count.",
         {
@@ -265,6 +283,7 @@ _STUDIO_TOOLS: tuple[StudioToolDescriptor, ...] = (
         "sync_shot_timeline",
         "Apply an explicit revision-guarded picture-clip order and optional drops while preserving non-picture tracks. Requires filmmaker approval.",
         {
+            "type": "object",
             "properties": {
                 "expectedProjectId": {"type": "string", "minLength": 1},
                 "expectedRevision": {"type": "string", "minLength": 1},
@@ -328,6 +347,63 @@ _STUDIO_TOOLS: tuple[StudioToolDescriptor, ...] = (
 AUTO_EXECUTABLE_TOOLS: frozenset[str] = frozenset(
     t["name"] for t in _STUDIO_TOOLS if t["autoExecutable"]
 )
+
+def page_agent_tool_descriptors(names: list[str]) -> tuple[StudioToolDescriptor, ...]:
+    """Resolve Page Agent tool names from this server-side catalog only."""
+    if len(names) != len(set(names)):
+        raise ValueError("Tools must not contain duplicate names.")
+    catalog = {tool["name"]: tool for tool in _STUDIO_TOOLS}
+    unknown = [name for name in names if name not in catalog]
+    if unknown:
+        raise ValueError(f"Tool {unknown[0]} is not available to Page Agent.")
+    return tuple(catalog[name] for name in names)
+
+
+def page_agent_catalog() -> tuple[StudioToolDescriptor, ...]:
+    """Return the server-owned catalog used to construct Page Agent macros."""
+    return _STUDIO_TOOLS
+
+
+# View-scoped macro catalog: the Page Agent only sees the tools relevant to the
+# current studio view (plus the always-on navigation/context set). Bundling all
+# ~20 schemas into one AgentOutput declaration made a single completion take
+# ~178s; scoping to the view keeps it to ~8 tools and ~3s.
+#
+# select_shot / select_element are deliberately NOT in the default catalog:
+# they mutate selection state, and the reasoning model repeatedly calls
+# select_element with a DOM accessibility index (e.g. "82") instead of a
+# screenplay element ID, so it fails instead of reading the studio state. The
+# Copilot's job is to inspect via the read tools and answer; selection is the
+# filmmaker's action in the studio UI.
+_PAGE_AGENT_ALWAYS_TOOLS: frozenset[str] = frozenset(
+    ("get_studio_state", "set_view", "get_script_outline", "get_production_checks")
+)
+_PAGE_AGENT_VIEW_TOOLS: dict[str, frozenset[str]] = {
+    # The default macro is READ-SCOPE: only small, fast inspection tools. The
+    # large mutation tools (patch_overhead/patch_frame/import_still/
+    # patch_frame_history/board_element/patch_shot/sync_shot_timeline) have big
+    # schemas that made a single completion take ~178s; they are reachable only
+    # through the individual-tools path when a mutation is actually requested.
+    "script": frozenset(("add_script_mark",)),
+    "stage": frozenset(("get_shot", "get_overhead_state", "get_frame_state")),
+    "edit": frozenset(("get_cut_state",)),
+    "render": frozenset(),
+}
+# DOM-inspection and question-staging tools are intentionally excluded from the
+# default macro; they are only reachable through the individual-tools path.
+_PAGE_AGENT_EXCLUDED_TOOLS: frozenset[str] = frozenset(
+    ("get_ui_snapshot", "apply_ui_patch", "stage_assistant_question")
+)
+
+
+def page_agent_catalog_for_view(view: str | None, research_enabled: bool = False) -> tuple[StudioToolDescriptor, ...]:
+    """Scope the macro catalog to a view; unknown/absent view falls back to the
+    always-on navigation/context set only. search_parallel only rides when
+    Parallel research is enabled for the run."""
+    allowed = _PAGE_AGENT_ALWAYS_TOOLS | _PAGE_AGENT_VIEW_TOOLS.get(view or "", frozenset())
+    if research_enabled:
+        allowed = allowed | {"search_parallel"}
+    return tuple(tool for tool in _STUDIO_TOOLS if tool["name"] in allowed)
 
 _MAX_UI_ACTIONS = 10
 _MAX_SERIALIZED_ACTION_BYTES = 1024

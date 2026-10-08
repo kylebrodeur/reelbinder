@@ -59,11 +59,26 @@ export default async function cinemaMiddleware(
   const importingArchive =
     event.req.method === "POST" && event.url.pathname === "/api/cinema/assets/import";
   try {
+    // h3's proxy drops the client `accept` (ignoredHeaders) which would turn an
+    // SSE ask into plain */*; pass it through explicitly. Harmless for the
+    // GET/POST paths that never negotiate content.
+    // srvx types the request headers as h3's TypedHeaders, which omits `get`
+    // and arbitrary key access; at runtime it is a real Headers.
+    const accept = (event.req.headers as Headers).get("accept") ?? undefined;
     return await proxyRequest(event, upstream.href, {
       // H3 forwards the request body stream. Allow the archive client's upload window.
+      // API reads and asks ride a 360s ceiling: the backend bounds a synchronous
+      // ask at 180s itself (including SSE streams, which commit before their
+      // final event), but the Page Agent's tool-choosing completions can reason
+      // over an accumulated tool history and need more than the old 200s. The
+      // gateway must outlast the provider, not the visitor.
       fetchOptions: {
         redirect: "manual",
-        signal: AbortSignal.timeout(importingArchive ? 120_000 : 25_000),
+        signal: AbortSignal.timeout(importingArchive ? 120_000 : 360_000),
+        // h3 merges headers via for..of pairs: a Headers instance (not a plain
+        // object) survives every h3 version, keeping the client Accept (and so
+        // SSE negotiation) intact through the proxy.
+        headers: accept ? new Headers({ accept }) : undefined,
       },
       filterHeaders: ["authorization", "x-forwarded-host", "x-forwarded-proto"],
     });

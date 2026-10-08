@@ -48,7 +48,12 @@ function pgliteBootstrapPlugin(): Plugin {
 }
 
 // `0.0.0.0:8080` is the live-preview contract — don't change host/port.
-// The dev server starts once the router and route modules are present.
+// The dev server starts once `src/router.tsx` and `src/routes/` exist — see
+// AGENTS.md § "First scaffold".
+// The dev cinema backend must accept this origin or OAuth redirects fail:
+// run it with CINEMA_ORIGINS='http://localhost:3000,http://127.0.0.1:8080,http://localhost:8080'
+// (see deploy/prepared/runtime.env.example and backend create_app defaults,
+// which only list the production origins).
 export default defineConfig(({ command, isPreview }) => ({
   server: {
     host: "0.0.0.0",

@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 
 const hooks = registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === "jszip") specifier = "jszip/dist/jszip.min.js";
     if (specifier.startsWith(".") && !/\.[a-z]+$/i.test(specifier)) specifier += ".ts";
     return nextResolve(specifier, context);
   },
@@ -19,7 +20,8 @@ const hooks = registerHooks({
   },
 });
 
-const { validateArchiveImportUrl, fetchArchiveFromUrl } = await import("../src/lib/portable-import.ts");
+const { validateArchiveImportUrl, fetchArchiveFromUrl, pickDeviceArchiveFile } = await import("../src/lib/portable-import.ts");
+const { createProjectOpenAttempt } = await import("../src/lib/demo-pack.ts");
 hooks.deregister();
 
 test("validateArchiveImportUrl accepts direct HTTPS URLs and preserves signed query parameters", () => {
@@ -146,3 +148,112 @@ test("fetchArchiveFromUrl handles user cancellation via AbortSignal", async (t) 
 
   await assert.rejects(fetchPromise, /cancelled/i);
 });
+
+test("pickDeviceArchiveFile returns null when window is not defined or picker not supported", async () => {
+  const originalWindow = globalThis.window;
+  try {
+    delete globalThis.window;
+    assert.equal(await pickDeviceArchiveFile(), null);
+
+    globalThis.window = {};
+    assert.equal(await pickDeviceArchiveFile(), null);
+  } finally {
+    if (originalWindow !== undefined) {
+      globalThis.window = originalWindow;
+    } else {
+      delete globalThis.window;
+    }
+  }
+});
+
+test("pickDeviceArchiveFile safely calls showOpenFilePicker when present", async () => {
+  const originalWindow = globalThis.window;
+  try {
+    const fakeFile = { name: "test.slate.zip", size: 100 };
+    globalThis.window = {
+      showOpenFilePicker: async (opts) => {
+        assert.equal(opts.multiple, false);
+        return [{ getFile: async () => fakeFile }];
+      },
+    };
+    const file = await pickDeviceArchiveFile();
+    assert.equal(file, fakeFile);
+
+    // Test AbortError handling
+    globalThis.window = {
+      showOpenFilePicker: async () => {
+        const err = new Error("User cancelled");
+        err.name = "AbortError";
+        throw err;
+      },
+    };
+    assert.equal(await pickDeviceArchiveFile(), null);
+  } finally {
+    if (originalWindow !== undefined) {
+      globalThis.window = originalWindow;
+    } else {
+      delete globalThis.window;
+    }
+  }
+});
+
+test("non-zip script open concurrency guard rejects when project changes during async read", async () => {
+  let current = { id: "p1", name: "Film 1" };
+  const getProject = () => current;
+  const replaceProject = (p) => { current = p; };
+
+  const attempt = createProjectOpenAttempt(getProject, replaceProject);
+  const snapshot = JSON.stringify(getProject());
+
+  // Simulate concurrent edit during async read
+  let readFinished = false;
+  const asyncRead = async () => {
+    await new Promise((r) => setTimeout(r, 10));
+    readFinished = true;
+    return "INT. ROOM - DAY\nAction.";
+  };
+
+  const readPromise = (async () => {
+    const text = await asyncRead();
+    attempt.signal.throwIfAborted();
+    if (JSON.stringify(getProject()) !== snapshot) {
+      throw new Error("Your project changed while the script was opening. Open it again when you are ready to replace the current project.");
+    }
+    return text;
+  })();
+
+  // Mutate project while read is in flight
+  current = { id: "p1", name: "Film 1 (Modified by user)" };
+
+  await assert.rejects(
+    readPromise,
+    /Your project changed while the script was opening/
+  );
+  assert.equal(readFinished, true);
+});
+
+test("non-zip script open concurrency guard rejects when open attempt is cancelled", async () => {
+  let current = { id: "p1", name: "Film 1" };
+  const getProject = () => current;
+  const replaceProject = (p) => { current = p; };
+
+  const attempt = createProjectOpenAttempt(getProject, replaceProject);
+  const snapshot = JSON.stringify(getProject());
+
+  const readPromise = (async () => {
+    await new Promise((r) => setTimeout(r, 20));
+    attempt.signal.throwIfAborted();
+    if (JSON.stringify(getProject()) !== snapshot) {
+      throw new Error("Your project changed while the script was opening.");
+    }
+    return "done";
+  })();
+
+  attempt.cancel();
+
+  await assert.rejects(
+    readPromise,
+    (err) => err.name === "AbortError"
+  );
+});
+

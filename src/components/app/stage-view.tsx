@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import {
   BookOpen,
-  Bot,
   ChevronLeft,
   ChevronRight,
   ExternalLink,
@@ -14,7 +13,6 @@ import {
 import { BlockingStudio, type StudioPane } from "@/components/app/blocking-studio";
 import { ImagineActions } from "@/components/app/frame-studio";
 import { Inspector } from "@/components/app/inspector";
-import { ProductionAssistantDock } from "@/components/app/production-assistant-dock";
 import { ProductionDrawer } from "@/components/app/production-drawer";
 import { SetupPicker } from "@/components/app/setup-picker";
 import { ShotStill } from "@/components/app/shot-still";
@@ -29,13 +27,12 @@ import { useStagePlayback } from "@/lib/stage-playback";
 import type { ScriptElement, ScriptMark, Shot } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-export type StageDockTab = "frame" | "inspector" | "copilot" | "book" | "script";
+export type StageDockTab = "frame" | "inspector" | "book" | "script";
 export const STAGE_OPEN_DOCK_EVENT = "slate:stage-open-dock";
 
 const STAGE_DOCK_TABS: SidebarDockTab<StageDockTab>[] = [
   { id: "frame", label: "Frame", icon: Sparkles },
   { id: "inspector", label: "Shot", icon: SlidersHorizontal },
-  { id: "copilot", label: "Co-Pilot", icon: Bot },
   { id: "book", label: "Book", icon: BookOpen },
   { id: "script", label: "Script", icon: FileText },
 ];
@@ -163,17 +160,6 @@ export function StageView() {
         </Button>
         <Button
           size="sm"
-          variant={dockTab === "copilot" ? "secondary" : "ghost"}
-          aria-label="Stage Director Co-Pilot"
-          title="Directorial checks: 180° line-of-action, eyelines, and prompt synthesizer"
-          aria-expanded={dockTab === "copilot"}
-          onClick={() => setDockTab(dockTab === "copilot" ? null : "copilot")}
-        >
-          <Bot />
-          <span className="hidden sm:inline">Stage Co-Pilot</span>
-        </Button>
-        <Button
-          size="sm"
           variant={dockTab === "book" ? "secondary" : "ghost"}
           aria-label="Production Book"
           aria-expanded={dockTab === "book"}
@@ -240,7 +226,6 @@ export function StageView() {
                 <Inspector embedded />
               </div>
             ) : null}
-            {dockTab === "copilot" ? <ProductionAssistantDock shot={shot} /> : null}
             {dockTab === "book" ? <ProductionDrawer embedded /> : null}
             {dockTab === "script" ? (
               <div className="h-full overflow-y-auto px-3 pt-3">

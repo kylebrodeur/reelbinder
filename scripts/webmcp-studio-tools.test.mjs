@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
+import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { createRequire, registerHooks, stripTypeScriptTypes } from "node:module";
-import { test } from "node:test";
+import { pathToFileURL } from "node:url";
 
-const memory = new Map();
+const toFileUrl = (value) => value.startsWith("file:") ? new URL(value) : pathToFileURL(value);
 Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
   value: {
@@ -32,14 +33,14 @@ const hooks = registerHooks({
       return {
         format: "module",
         shortCircuit: true,
-        source: `export default ${JSON.stringify(readFileSync(new URL(url.slice(0, -4)), "utf8"))}`,
+        source: `export default ${JSON.stringify(readFileSync(toFileUrl(url.slice(0, -4)), "utf8"))}`,
       };
     }
-    if (!url.endsWith(".ts")) return nextLoad(url, context);
+    if (!url.endsWith(".ts")) return nextLoad(url.startsWith("file:") ? url : toFileUrl(url).href, context);
     return {
       format: "module",
       shortCircuit: true,
-      source: stripTypeScriptTypes(readFileSync(new URL(url), "utf8")),
+      source: stripTypeScriptTypes(readFileSync(toFileUrl(url), "utf8"), { mode: "transform" }),
     };
   },
 });
@@ -47,6 +48,7 @@ const hooks = registerHooks({
 const { STUDIO_TOOLS, executeStudioTool } = await import("../src/lib/webmcp/studio-tools.ts");
 const { useSlate } = await import("../src/lib/store.ts");
 const { VIEWS, MARK_TAGS } = await import("../src/lib/types.ts");
+const { applyUiPatch, inspectUiControls } = await import("../src/lib/webmcp/ui-json.ts");
 
 hooks.deregister();
 
@@ -54,6 +56,8 @@ const SNAKE_CASE_RE = /^[a-zA-Z0-9_]+$/;
 
 const EXPECTED = new Map([
   ["get_studio_state", { readOnlyHint: true, autoExecutable: true }],
+  ["get_production_checks", { readOnlyHint: true, autoExecutable: true }],
+  ["search_parallel", { readOnlyHint: true, autoExecutable: true }],
   ["get_ui_snapshot", { readOnlyHint: true, autoExecutable: false }],
   ["apply_ui_patch", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
   ["get_script_outline", { readOnlyHint: true, autoExecutable: true }],
@@ -72,6 +76,10 @@ const EXPECTED = new Map([
   ["sync_shot_timeline", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
   ["patch_frame_history", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
   ["import_still", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
+  ["get_connection_status", { readOnlyHint: true, autoExecutable: true }],
+  ["start_google_connection", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
+  ["test_connection", { readOnlyHint: true, autoExecutable: true }],
+  ["disconnect_connection", { readOnlyHint: false, consequentialHint: true, autoExecutable: false }],
   ["stage_assistant_question", { readOnlyHint: false, autoExecutable: false }],
 ]);
 
@@ -231,6 +239,9 @@ test("cut state reads and synchronizes an explicit picture order with stale guar
   const before = await executeStudioTool("get_cut_state", {});
   assert.equal(before.ok, true);
   const beforeState = JSON.parse(before.content[0].text);
+  // The revision is a SHORT stale-guard token, never the full project JSON
+  // (which would bloat the Page Agent's accumulating tool-result history).
+  assert.ok(beforeState.revision.length < 200, `revision must be short, got ${beforeState.revision.length} chars`);
   assert.deepEqual(beforeState.pictureClipIds, ["pic-a", "pic-b"]);
 
   const synced = await executeStudioTool("sync_shot_timeline", {
@@ -529,4 +540,348 @@ test("stage_assistant_question validates question length", async () => {
 
   const valid = await executeStudioTool("stage_assistant_question", { question: "What coverage do I need?" });
   assert.equal(valid.ok, true);
+});
+
+// --- Schema audit: schemas must accept what the Page Agent (model) sends ---
+
+function typeMatches(schema, type, value, path) {
+  if (type === "object") {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+    if (schema.required) {
+      for (const key of schema.required) {
+        assert.ok(Object.hasOwn(value, key), `${path} requires "${key}" (got ${JSON.stringify(value)})`);
+      }
+    }
+    if (schema.properties) {
+      for (const key of schema.required ?? []) {
+        assert.ok(key in schema.properties, `${path}: required field "${key}" must be declared in properties`);
+      }
+      // Declared optional properties are validated too: a schema that
+      // under-types an optional field (e.g. value, expectedRevision) is a bug.
+      for (const [key, memberSchema] of Object.entries(schema.properties)) {
+        if (Object.hasOwn(value, key)) validateSchemaValue(memberSchema, value[key], `${path}.${key}`);
+      }
+    }
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(value)) {
+        assert.ok(key in schema.properties, `${path}: additional property "${key}" is not allowed`);
+      }
+    }
+    return true;
+  }
+  if (type === "array") {
+    if (!Array.isArray(value)) return false;
+    if (schema.minItems !== undefined) assert.ok(value.length >= schema.minItems, `${path} needs >= ${schema.minItems} items`);
+    if (schema.maxItems !== undefined) assert.ok(value.length <= schema.maxItems, `${path} needs <= ${schema.maxItems} items`);
+    if (schema.items) {
+      for (const [index, item] of value.entries()) validateSchemaValue(schema.items, item, `${path}[${index}]`);
+    }
+    return true;
+  }
+  if (type === "integer") {
+    if (typeof value !== "number" || !Number.isInteger(value)) return false;
+  } else if (type === "number") {
+    if (typeof value !== "number") return false;
+  } else if (type === "string") {
+    if (typeof value !== "string") return false;
+    if (schema.minLength !== undefined) assert.ok(value.length >= schema.minLength, `${path} must be >= ${schema.minLength} chars`);
+    if (schema.maxLength !== undefined) assert.ok(value.length <= schema.maxLength, `${path} must be <= ${schema.maxLength} chars`);
+  } else if (type === "boolean") {
+    if (typeof value !== "boolean") return false;
+  } else {
+    assert.fail(`${path}: unsupported schema type "${type}"`);
+  }
+  if (schema.enum) assert.ok(schema.enum.includes(value), `${path} must be one of ${JSON.stringify(schema.enum)}`);
+  if (schema.minimum !== undefined) assert.ok(value >= schema.minimum, `${path} must be >= ${schema.minimum}`);
+  if (schema.maximum !== undefined) assert.ok(value <= schema.maximum, `${path} must be <= ${schema.maximum}`);
+  return true;
+}
+
+/**
+ * Minimal JSON Schema subset validator for the studio tool inputSchemas.
+ * Supports: type (string or union array incl. "null"/"integer"), enum,
+ * minimum/maximum, minLength/maxLength, minItems/maxItems, items, oneOf,
+ * properties/required/additionalProperties: false. Throws with a path on any
+ * mismatch so a union member's own constraints still fail the union.
+ */
+function validateSchemaValue(schema, value, path) {
+  if (Array.isArray(schema.oneOf)) {
+    let matched = 0;
+    for (const branch of schema.oneOf) {
+      try {
+        if (validateSchemaValue(branch, value, path)) matched++;
+      } catch { /* branch miss */ }
+    }
+    assert.ok(matched >= 1, `${path} must match one of the oneOf branches`);
+    return true;
+  }
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+  assert.ok(types.length > 0 && types.every((type) => typeof type === "string"), `${path}: schema must declare a type`);
+  for (const type of types) {
+    if (type === "null") {
+      if (value === null) return true;
+      continue;
+    }
+    if (typeMatches(schema, type, value, path)) return true;
+  }
+  assert.fail(`${path} (value ${JSON.stringify(value)}) matched no type in ${JSON.stringify(types)}`);
+}
+
+/** Representative arguments a Page Agent would send for each tool. */
+const REPRESENTATIVE_ARGS = new Map([
+  ["get_ui_snapshot", { limit: 250 }],
+  ["apply_ui_patch", {
+    revision: 3,
+    operations: [
+      { ref: "c1", action: "fill", value: 50 },
+      { ref: "c2", action: "fill", value: true },
+      { ref: "c3", action: "click" },
+    ],
+  }],
+  ["get_studio_state", {}],
+  ["get_production_checks", {}],
+  ["search_parallel", { question: "What is the fastest film festival in the world?" }],
+  ["get_script_outline", { limit: 20 }],
+  ["get_shot", { shotId: "shot-1" }],
+  ["set_view", { view: "stage" }],
+  ["select_shot", { shotId: "shot-1" }],
+  ["select_element", { elementId: null }],
+  ["board_element", { elementId: "beat-1" }],
+  ["add_script_mark", { elementId: "beat-1", quote: "silver coin drops", tag: "prop", note: "Hero prop" }],
+  ["patch_shot", { shotId: "shot-1", fields: { notes: "Agent note." } }],
+  ["get_overhead_state", { shotId: "shot-1" }],
+  ["patch_overhead", {
+    shotId: "shot-1",
+    operations: [{ op: "add_item", kind: "chair", x: 0.2, y: 0.3, label: "Chair" }],
+  }],
+  ["get_frame_state", { shotId: "shot-1" }],
+  ["patch_frame", {
+    shotId: "shot-1",
+    operations: [
+      { op: "add_stamp", kind: "box", x: 0.25, y: 0.35 },
+      { op: "add_stroke", tool: "pencil", points: [{ x: 0.1, y: 0.1 }] },
+    ],
+  }],
+  ["get_cut_state", {}],
+  ["sync_shot_timeline", {
+    expectedProjectId: "proj-1",
+    expectedRevision: 7,
+    expectedPictureClipIds: ["pic-a"],
+    orderedPictureClipIds: ["pic-a"],
+  }],
+  ["patch_frame_history", {
+    shotId: "shot-1",
+    expectedProjectId: "proj-1",
+    expectedRevision: 7,
+    expectedHistoryIds: ["old-frame"],
+    removeIds: ["old-frame"],
+  }],
+  ["import_still", {
+    shotId: "shot-1",
+    setup: "Medium static on coin drop",
+    dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+    expectedProjectId: "proj-1",
+    expectedRevision: 7,
+    expectedFrameUrl: null,
+    expectedHistoryIds: [],
+  }],
+  ["get_connection_status", {}],
+  ["start_google_connection", { renewalConnectionId: "conn-1" }],
+  ["test_connection", { connectionId: "conn-1" }],
+  ["disconnect_connection", { connectionId: "conn-1" }],
+  ["stage_assistant_question", { question: "What coverage do I need?" }],
+]);
+
+test("every tool inputSchema is structural and accepts model-typical arguments", () => {
+  for (const tool of STUDIO_TOOLS) {
+    const schema = tool.inputSchema;
+    assert.equal(schema.type, "object", `${tool.name} must declare type "object"`);
+    assert.ok(typeof schema.properties === "object" && schema.properties !== null, `${tool.name} must declare properties`);
+    for (const required of schema.required ?? []) {
+      assert.ok(required in schema.properties, `${tool.name}: required "${required}" is missing from properties`);
+    }
+    const args = REPRESENTATIVE_ARGS.get(tool.name);
+    assert.ok(args, `${tool.name} must have representative model-typical arguments`);
+    assert.equal(
+      validateSchemaValue(schema, args, tool.name),
+      true,
+      `${tool.name} representative arguments must validate`,
+    );
+  }
+});
+
+test("schemas declare the type unions the model actually sends", () => {
+  const schemaOf = (name) => STUDIO_TOOLS.find((tool) => tool.name === name).inputSchema;
+
+  // apply_ui_patch.value must accept scalars, not just strings.
+  const valueSchema = schemaOf("apply_ui_patch").properties.operations.items.properties.value;
+  assert.ok(Array.isArray(valueSchema.type), "apply_ui_patch value must declare a type union");
+  for (const type of ["string", "number", "boolean"]) {
+    assert.ok(valueSchema.type.includes(type), `apply_ui_patch value must accept ${type}`);
+  }
+
+  // expectedRevision must accept an integer where the guard echoes a token.
+  for (const name of ["sync_shot_timeline", "patch_frame_history", "import_still"]) {
+    const revisionSchema = schemaOf(name).properties.expectedRevision;
+    assert.ok(Array.isArray(revisionSchema.type), `${name} expectedRevision must declare a type union`);
+    assert.ok(revisionSchema.type.includes("number"), `${name} expectedRevision must accept an integer`);
+    assert.ok(revisionSchema.type.includes("string"), `${name} expectedRevision must accept a string`);
+    assert.ok(schemaOf(name).required.includes("expectedRevision"), `${name} must still require expectedRevision`);
+  }
+});
+
+test("negative cases are rejected by the declared schemas", () => {
+  const schemaOf = (name) => STUDIO_TOOLS.find((tool) => tool.name === name).inputSchema;
+
+  assert.throws(
+    () => validateSchemaValue(schemaOf("select_shot"), { shotId: 123 }, "select_shot"),
+    /must match one of the oneOf branches/,
+    "numeric shotId must fail the select_shot oneOf",
+  );
+  assert.throws(
+    () => validateSchemaValue(schemaOf("apply_ui_patch"), {
+      revision: 3,
+      operations: [{ ref: "c1", action: "fill", value: {} }],
+    }, "apply_ui_patch"),
+    /must be a (string|number|boolean)|matched no type/,
+    "object value must fail the apply_ui_patch value union",
+  );
+  assert.throws(
+    () => validateSchemaValue(schemaOf("set_view"), { view: "bogus" }, "set_view"),
+    /must be one of/,
+    "unlisted view must fail the enum",
+  );
+});
+
+test("numeric expectedRevision passes the type boundary and reaches the stale guard", async () => {
+  useSlate.setState({ project: fixtureProject(), selectedId: "shot-1", selectedElementId: null, view: "edit" });
+
+  // A numeric token is coerced to its string form, so the failure is the
+  // revision guard, not a type rejection. This is the correct end-to-end
+  // behavior for a model that echoes the revision as a number.
+  const cases = [
+    ["sync_shot_timeline", { expectedProjectId: "webmcp-test", expectedRevision: 12345, expectedPictureClipIds: ["pic-a"], orderedPictureClipIds: ["pic-a"] }],
+    ["patch_frame_history", {
+      shotId: "shot-1",
+      expectedProjectId: "webmcp-test",
+      expectedRevision: 12345,
+      expectedHistoryIds: [],
+      removeIds: ["old-frame"],
+    }],
+    ["import_still", {
+      shotId: "shot-1",
+      setup: "Medium static on coin drop",
+      dataUrl: "data:image/png;base64,iVBORw0KGgo=",
+      expectedProjectId: "webmcp-test",
+      expectedRevision: 12345,
+      expectedFrameUrl: null,
+      expectedHistoryIds: [],
+    }],
+  ];
+  for (const [name, args] of cases) {
+    const result = await executeStudioTool(name, args);
+    assert.equal(result.ok, false, `${name} with a numeric revision must fail`);
+    assert.match(
+      result.error,
+      /changed since this operation was prepared/,
+      `${name} with a numeric revision must reach the revision guard, not a type error`,
+    );
+  }
+});
+
+test("applyUiPatch coerces numeric and boolean values to strings before applying", async () => {
+  // Minimal DOM surface for the single text input the patch drives. The
+  // classes must be real globals so ui-json's instanceof checks pass.
+  let dispatched = [];
+  const attributes = new Map();
+
+  class FakeHTMLElement {
+    constructor(tagName, type) {
+      this.tagName = tagName;
+      this.attributes = attributes;
+      this.disabled = false;
+      this.isContentEditable = false;
+      this.textContent = "";
+      this.className = "";
+      this.id = "";
+      this.type = type;
+    }
+    get isConnected() { return true; }
+    getAttribute(name) { return attributes.get(name) ?? null; }
+    setAttribute(name, value) { attributes.set(name, value); }
+    hasAttribute(name) { return attributes.has(name); }
+    closest() { return null; }
+    getClientRects() { return [{}]; }
+    dispatchEvent(event) {
+      dispatched.push(event.type);
+      return true;
+    }
+  }
+  class FakeInputElement extends FakeHTMLElement {
+    constructor(type) {
+      super("INPUT", type);
+      this.value = "";
+    }
+  }
+
+  const input = new FakeInputElement("text");
+  const previous = {
+    document: globalThis.document,
+    window: globalThis.window,
+    HTMLElement: globalThis.HTMLElement,
+    HTMLInputElement: globalThis.HTMLInputElement,
+    HTMLTextAreaElement: globalThis.HTMLTextAreaElement,
+    HTMLSelectElement: globalThis.HTMLSelectElement,
+    HTMLButtonElement: globalThis.HTMLButtonElement,
+  };
+  globalThis.document = {
+    title: "ReelBinder Studio",
+    activeElement: input,
+    querySelector: () => null,
+    querySelectorAll: () => [input],
+    getElementById: () => null,
+  };
+  globalThis.HTMLElement = FakeHTMLElement;
+  globalThis.HTMLInputElement = FakeInputElement;
+  globalThis.HTMLTextAreaElement = class FakeTextAreaElement extends FakeHTMLElement { };
+  globalThis.HTMLSelectElement = class FakeSelectElement extends FakeHTMLElement { };
+  globalThis.HTMLButtonElement = class FakeButtonElement extends FakeHTMLElement { };
+
+  try {
+    const snapshot = inspectUiControls();
+    assert.equal(snapshot.ok, true);
+    assert.deepEqual(snapshot.snapshot.controls.map((control) => control.ref), ["c1"]);
+    const revision = snapshot.snapshot.revision;
+
+    const result = await applyUiPatch({
+      revision,
+      operations: [
+        { ref: "c1", action: "fill", value: 50 },
+        { ref: "c1", action: "fill", value: true },
+      ],
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      const outcomes = result.result.outcomes;
+      assert.equal(outcomes.length, 2);
+      assert.equal(outcomes[0].ok, true);
+      assert.equal(outcomes[0].control?.value, "50");
+      assert.ok(dispatched.includes("input") && dispatched.includes("change"));
+      assert.equal(outcomes[1].ok, true);
+      assert.equal(outcomes[1].control?.value, "true");
+      assert.equal(input.value, "true");
+    }
+
+    const rejected = await applyUiPatch({
+      revision,
+      operations: [{ ref: "c1", action: "fill", value: {} }],
+    });
+    assert.equal(rejected.ok, false);
+    assert.match(rejected.error, /must be a string, number, or boolean/);
+  } finally {
+    for (const [name, value] of Object.entries(previous)) {
+      if (value === undefined) delete globalThis[name];
+      else globalThis[name] = value;
+    }
+  }
 });

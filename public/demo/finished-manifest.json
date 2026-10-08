@@ -1,26 +1,26 @@
 {
   "version": 1,
-  "title": "The Bounty Hunter — finished presentation Project",
-  "description": "A media-light presentation Project with the screenplay, production planning, floor plan and accepted V07 source-trim timeline. Approved film media stays offline until you choose Download media and relink in Render.",
+  "title": "The Bounty Hunter — finished presentation Project (locked final cut)",
+  "description": "A media-light presentation Project with the screenplay, production planning, floor plan and the locked 55.6-second final cut arranged as 17 picture excerpts. The music soundtrack and voice-over are baked into the film render, as are the opening title cards. Approved film media stays offline until you explicitly choose Download media and relink in Render.",
   "credit": "Rights retained by Kyle Brodeur. Screenplay by Bradley Weatherholt. This finished study is provided for evaluation and playback use only, outside the software MIT license.",
   "pack": {
     "url": "/demo/finished-presentation-project.reelbinder.zip",
-    "sha256": "7a5a7960e5f1bd2d0a78fc9bc3fea81b35512f70789fe726d9643e89a2ee910a",
-    "byteSize": 66585
+    "sha256": "6c0154728173356791cb3c82d40235fdafa1dcec0ff008ed68fb6ce1b3c75f50",
+    "byteSize": 145996
   },
   "media": [
     {
-      "id": "finished-presentation-film",
-      "url": "/demo/media/the-bounty-hunter-v07.mp4",
-      "sha256": "48613faebbf5cdfb22c21e29655043ac50d73978587a98b26bb1b28a076939e7",
-      "byteSize": 16765387,
+      "id": "bounty-hunter-final-cut-film",
+      "url": "https://storage.googleapis.com/reelbinder-public-downloads/final/2026-10-08/the-bounty-hunter-final-cut.mp4",
+      "sha256": "8c3d8afacd23567ce9ab2bc9188bcc70b0ba052d48a8880c8bde63fe2b4d7bd6",
+      "byteSize": 26486410,
       "mimeType": "video/mp4",
       "owners": [
         "project.cutUrl",
         "project.shots[*].videoUrl",
         "project.timeline.clips[*].sourceVideoUrl"
       ],
-      "label": "Accepted V07 finished film"
+      "label": "Locked final cut — built 2026-10-08"
     }
   ]
 }

@@ -1,7 +1,6 @@
 import { KeyFrameGuidance } from "@/components/app/key-frame-guidance";
-import { Film, Loader2, Music2, RefreshCw } from "lucide-react";
+import { Film, Loader2, Music2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ConnectionsControl } from "@/components/app/cinema-connections";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -14,8 +13,8 @@ import {
   getCinemaConnections,
   getCinemaHealth,
   waitForCinemaJob,
-  type CinemaConnection,
   type CinemaHealth,
+  type GenerationCreditKind,
 } from "@/lib/cinema-client";
 import {
   createMediaJobRequest,
@@ -31,6 +30,7 @@ import {
 } from "@/lib/cinema-media";
 import { useSlate } from "@/lib/store";
 import { initialMediaPrompt } from "@/lib/media-prompt";
+import { useGenerationCredits } from "@/lib/use-generation-credits";
 import { formatGateIssues, videoReadiness, videoReviewFingerprint } from "@/lib/production-gates";
 import type { Project, Shot } from "@/lib/types";
 
@@ -106,8 +106,7 @@ function MediaJobPanel({
   );
   const [ratio, setRatio] = useState<"16:9" | "9:16">("16:9");
   const [generateAudio, setGenerateAudio] = useState(true);
-  const [connections, setConnections] = useState<CinemaConnection[]>([]);
-  const [connectionId, setConnectionId] = useState("");
+  const [activeConnectionId, setActiveConnectionId] = useState("");
   const [health, setHealth] = useState<CinemaHealth | null>(null);
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -123,6 +122,13 @@ function MediaJobPanel({
   const [reviewedChange, setReviewedChange] = useState<string | null>(null);
   const [applied, setApplied] = useState(false);
   const [videoReview, setVideoReview] = useState<string | null>(null);
+
+  // A saved recovery/preparation record keeps its original connection; new jobs use the active Settings > App connection.
+  const connectionId = frozenConnectionId ?? activeConnectionId;
+  const credits = useGenerationCredits(connectionId || undefined);
+  const creditKind: GenerationCreditKind = kind;
+  const myCredits = credits && !credits.admin ? credits.byType[creditKind] : null;
+  const outOfCredits = myCredits !== null && myCredits.remaining <= 0;
 
   useEffect(() => {
     let active = true;
@@ -145,7 +151,7 @@ function MediaJobPanel({
     setVideoReview(null);
     const restore = () => {
       try {
-        const raw = sessionStorage.getItem(storageKey);
+        const raw = localStorage.getItem(storageKey);
         const context = { kind, localProjectId: project.id, shotId };
         const saved = parseMediaRecovery(raw, context);
         const preparation = parseMediaPreparation(raw, context);
@@ -195,36 +201,35 @@ function MediaJobPanel({
       active = false;
     };
   }, [storageKey, kind, project.id, shotId]);
-  const refresh = useCallback(async () => {
+  const loadStatus = useCallback(async () => {
     setLoading(true);
     try {
       const [items, status] = await Promise.all([getCinemaConnections(), getCinemaHealth()]);
-      const standard = items.filter(
+      const active = items.find(
         (connection) =>
           connection.provider === "google-cloud" &&
-          connection.mode === "standard" &&
-          !!connection.projectId,
+          connection.status === "configured" &&
+          connection.expiresAt * 1000 > Date.now(),
       );
-      setConnections(standard);
       setHealth(status);
-      setConnectionId((current) =>
-        standard.some((connection) => connection.connectionId === current)
-          ? current
-          : (standard[0]?.connectionId ?? ""),
-      );
+      setActiveConnectionId(active?.connectionId ?? "");
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : "Could not read media availability.");
+      setError(
+        failure instanceof Error
+          ? failure.message
+          : "Could not read media availability. Open Settings > App to check the Google Cloud connection.",
+      );
     } finally {
       setLoading(false);
     }
   }, []);
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    void loadStatus();
+  }, [loadStatus]);
 
   const persist = (value: MediaRecovery) => {
     // Save the exact request before submission, then the job ID before polling.
-    sessionStorage.setItem(storageKey, JSON.stringify(value));
+    localStorage.setItem(storageKey, JSON.stringify(value));
     setRecovery(value);
     setPreparing(false);
     setFrozenConnectionId(value.request.connectionId ?? null);
@@ -232,7 +237,7 @@ function MediaJobPanel({
   const reset = () => {
     if (mediaFlights.get(storageKey)) return;
     try {
-      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
     } catch {
       setError(
         "Could not clear saved job details. Keep this result until session storage is available.",
@@ -277,9 +282,20 @@ function MediaJobPanel({
           const currentGate = videoReadiness(project, shotId, videoReview, videoIntent);
           if (!currentGate.ready) throw new Error(formatGateIssues(currentGate));
         }
-        if (!confirmedCharge || !configured || !connectionId || !signature)
-          throw new Error("Confirm this generation and connect an available Cloud project first.");
+        if (!confirmedCharge || !configured || !signature)
+          throw new Error("Confirm this generation and connect Google Cloud in Settings > App first.");
         if (kind === "video" && !shotId) throw new Error("Select a shot to animate.");
+        // Resolve the active Settings > App connection immediately before dispatch.
+        const current = await getCinemaConnections();
+        const active = current.find(
+          (connection) =>
+            connection.provider === "google-cloud" &&
+            connection.status === "configured" &&
+            connection.expiresAt * 1000 > Date.now(),
+        );
+        if (!active)
+          throw new Error("Open Settings > App to connect or renew Google Cloud before generating.");
+        setActiveConnectionId(active.connectionId);
         const preparation: MediaPreparation = {
           phase: "preparing",
           version: 1,
@@ -290,7 +306,7 @@ function MediaJobPanel({
           jobId: null,
           request: createMediaJobRequest({
             kind,
-            connectionId,
+            connectionId: active.connectionId,
             projectId: "__pending_snapshot__",
             revision: 1,
             idempotencyKey: crypto.randomUUID(),
@@ -304,9 +320,9 @@ function MediaJobPanel({
           }),
         };
         // A remount sees this marker and the shared flight before any network work begins.
-        sessionStorage.setItem(storageKey, JSON.stringify(preparation));
+        localStorage.setItem(storageKey, JSON.stringify(preparation));
         setPreparing(true);
-        setFrozenConnectionId(connectionId);
+        setFrozenConnectionId(active.connectionId);
         const saved = await cinemaRequest<{ projectId: string; revision: number }>("/projects", {
           method: "POST",
           body: JSON.stringify({ project }),
@@ -411,69 +427,41 @@ function MediaJobPanel({
 
   return (
     <div className="min-w-0 space-y-3">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="text-sm font-medium">
-            {kind === "video"
-              ? shot
-                ? `Animate shot ${shot.number} · ${shot.title}`
-                : "Select a shot to animate"
-              : `Music cue · ${project.name}`}
-          </h3>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {kind === "video"
-              ? "Generate a take, watch it, then choose whether to use it."
-              : "Create an instrumental cue, listen, then add it to the film."}
-          </p>
-        </div>
-        <ConnectionsControl />
+      <div>
+        <h3 className="text-sm font-medium">
+          {kind === "video"
+            ? shot
+              ? `Animate shot ${shot.number} · ${shot.title}`
+              : "Select a shot to animate"
+            : `Music cue · ${project.name}`}
+        </h3>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {kind === "video"
+            ? "Generate a take, watch it, then choose whether to use it."
+            : "Create an instrumental cue, listen, then add it to the film."}
+        </p>
       </div>
-      <div className="flex items-start justify-between gap-2 rounded-md bg-secondary/50 p-2 text-xs">
-        <div>
-          <p>{capability?.model ?? "Model not configured"}</p>
+      <div className="rounded-md bg-secondary/50 p-2 text-xs">
+        <p>{capability?.model ?? (loading ? "Checking media models…" : "Model not configured")}</p>
+        <p className="mt-1 text-muted-foreground">
+          {capability?.reason ?? "Media model status appears here once Google Cloud is connected in Settings > App."}
+        </p>
+        {frozenConnectionId ? (
           <p className="mt-1 text-muted-foreground">
-            {capability?.reason ?? "Read tool status after the cinema service is connected."}
+            This job runs on its originally saved Google Cloud connection; new requests use the connection configured in Settings &gt; App.
           </p>
+        ) : activeConnectionId ? (
           <p className="mt-1 text-muted-foreground">
-            {configured
-              ? "Configured; live access depends on your connected project."
-              : "Generation is currently unavailable."}
+            Uses the Google Cloud connection configured in Settings &gt; App.
           </p>
-        </div>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Refresh media connections and models"
-          disabled={loading || busy}
-          onClick={() => void refresh()}
-        >
-          <RefreshCw className={loading ? "animate-spin" : ""} />
-        </Button>
+        ) : (
+          <p className="mt-1 text-destructive">
+            Open Settings &gt; App to connect Google Cloud before generating.
+          </p>
+        )}
       </div>
       {!assets.length && (
         <>
-          <label className="grid gap-1.5 text-xs">
-            Cloud project
-            <select
-              className="h-9 w-full min-w-0 rounded-md border border-border bg-background px-2"
-              value={frozenConnectionId ?? connectionId}
-              disabled={busy || !!recovery || preparing}
-              onChange={(event) => setConnectionId(event.target.value)}
-            >
-              {!connections.length && (
-                <option value="">Connect a Cloud project with an access token</option>
-              )}
-              {frozenConnectionId &&
-                !connections.some(
-                  (connection) => connection.connectionId === frozenConnectionId,
-                ) && <option value={frozenConnectionId}>Original saved connection</option>}
-              {connections.map((connection) => (
-                <option key={connection.connectionId} value={connection.connectionId}>
-                  {connection.projectId} · {connection.location ?? "configured region"}
-                </option>
-              ))}
-            </select>
-          </label>
           {kind === "video" && shot && <KeyFrameGuidance projectId={project.id} shot={shot} mode="take" />}
           {kind === "video" && videoGate && !videoGate.ready ? (
             <div role="alert" className="space-y-1 rounded-md border border-destructive/40 p-2 text-xs">
@@ -585,18 +573,26 @@ function MediaJobPanel({
                 disabled={busy}
                 onChange={(event) => setConfirmedCharge(event.target.checked)}
               />
-              Use my connected Cloud project for this generation. Model usage may incur charges.
+              Use the Google Cloud connection from Settings &gt; App for this generation. Model usage may incur charges.
             </label>
           )}
+          {myCredits ? (
+            <p className={`text-xs ${outOfCredits ? "text-destructive" : "text-muted-foreground"}`}>
+              {outOfCredits
+                ? `Monthly ${creditKind} credit limit reached (${myCredits.used}/${myCredits.limit}). Contact Kyle to raise it.`
+                : `${myCredits.remaining} of ${myCredits.limit} monthly ${creditKind} credits remaining.`}
+            </p>
+          ) : null}
           <Button
             className="w-full"
             disabled={
+              outOfCredits ||
               busy ||
               preparing ||
               !restored ||
               (!recovery &&
                 (!configured ||
-                  !connectionId ||
+                  !activeConnectionId ||
                   !confirmedCharge ||
                   !prompt.trim() ||
                   !signature ||

@@ -113,20 +113,29 @@ function finiteNormalized(value: unknown): value is number {
 }
 
 function frameLayers(value: unknown): value is FrameLayerSettings {
-  return object(value) && exactKeys(value, ["guides", "wireframe", "markup", "image", "onionSkinOpacity"]) &&
+  return (
+    object(value) &&
+    exactKeys(value, ["guides", "wireframe", "markup", "image", "onionSkinOpacity"]) &&
     ["guides", "wireframe", "markup", "image"].every((key) => typeof value[key] === "boolean") &&
-    finiteNormalized(value.onionSkinOpacity);
+    finiteNormalized(value.onionSkinOpacity)
+  );
 }
 
 function validFloorItem(value: Project["floor"]["items"][number]): boolean {
-  return !!value.id.trim() && !!value.label.trim() && Number.isFinite(value.rotation) && floorItemFitsPlan(value);
+  return (
+    !!value.id.trim() &&
+    !!value.label.trim() &&
+    Number.isFinite(value.rotation) &&
+    floorItemFitsPlan(value)
+  );
 }
 
 function relativeBearing(
   camera: Project["floor"]["cameras"][number],
   target: { x: number; y: number },
 ): number {
-  const bearing = Math.atan2((target.y - camera.y) * 90, (target.x - camera.x) * 160) * 180 / Math.PI;
+  const bearing =
+    (Math.atan2((target.y - camera.y) * 90, (target.x - camera.x) * 160) * 180) / Math.PI;
   let relative = ((bearing - camera.angle + 180) % 360) - 180;
   if (relative < -180) relative += 360;
   return relative;
@@ -136,10 +145,11 @@ function legacyPlanReviewProject(project: Project): Record<string, unknown> {
   const source = structuredClone(project) as unknown as Record<string, unknown>;
   Reflect.deleteProperty(source, "updatedAt");
   const shots = source.shots;
-  if (Array.isArray(shots)) for (const value of shots) {
-    if (!object(value)) continue;
-    for (const key of MEDIA_SHOT_KEYS) Reflect.deleteProperty(value, key);
-  }
+  if (Array.isArray(shots))
+    for (const value of shots) {
+      if (!object(value)) continue;
+      for (const key of MEDIA_SHOT_KEYS) Reflect.deleteProperty(value, key);
+    }
   return source;
 }
 
@@ -151,11 +161,25 @@ function planReviewProject(project: Project): unknown {
 }
 
 function planReviewPayload(project: Project, shotId: string, layers: FrameLayerSettings): string {
-  return JSON.stringify({ kind: "overhead-plan-review", project: planReviewProject(project), shotId, extra: layers });
+  return JSON.stringify({
+    kind: "overhead-plan-review",
+    project: planReviewProject(project),
+    shotId,
+    extra: layers,
+  });
 }
 
-function legacyPlanReviewPayload(project: Project, shotId: string, layers: FrameLayerSettings): string {
-  return JSON.stringify({ kind: "overhead-plan-review", project: legacyPlanReviewProject(project), shotId, extra: layers });
+function legacyPlanReviewPayload(
+  project: Project,
+  shotId: string,
+  layers: FrameLayerSettings,
+): string {
+  return JSON.stringify({
+    kind: "overhead-plan-review",
+    project: legacyPlanReviewProject(project),
+    shotId,
+    extra: layers,
+  });
 }
 
 export interface ParsedFramePlanReviewFingerprint {
@@ -167,16 +191,34 @@ export interface ParsedFramePlanReviewFingerprint {
 }
 
 /** Parse both compact approvals and version-1 snapshots that embedded the full authored Project. */
-export function parseFramePlanReviewFingerprint(value: string): ParsedFramePlanReviewFingerprint | null {
+export function parseFramePlanReviewFingerprint(
+  value: string,
+): ParsedFramePlanReviewFingerprint | null {
   if (typeof value !== "string" || value.length > 8 * 1024 * 1024) return null;
   let approval: unknown;
-  try { approval = JSON.parse(value); } catch { return null; }
-  if (!object(approval) || JSON.stringify(approval) !== value || approval.kind !== "overhead-plan-review") return null;
+  try {
+    approval = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  if (
+    !object(approval) ||
+    JSON.stringify(approval) !== value ||
+    approval.kind !== "overhead-plan-review"
+  )
+    return null;
 
   if (approval.version === 2 || approval.version === 3) {
-    if (!exactKeys(approval, COMPACT_PLAN_FINGERPRINT_KEYS) || !identifier(approval.projectId) ||
-        !identifier(approval.shotId) || typeof approval.setup !== "string" || !approval.setup.trim() ||
-        !frameLayers(approval.layers) || !digest(approval.sha256)) return null;
+    if (
+      !exactKeys(approval, COMPACT_PLAN_FINGERPRINT_KEYS) ||
+      !identifier(approval.projectId) ||
+      !identifier(approval.shotId) ||
+      typeof approval.setup !== "string" ||
+      !approval.setup.trim() ||
+      !frameLayers(approval.layers) ||
+      !digest(approval.sha256)
+    )
+      return null;
     return {
       version: approval.version,
       projectId: approval.projectId,
@@ -186,13 +228,20 @@ export function parseFramePlanReviewFingerprint(value: string): ParsedFramePlanR
     };
   }
 
-  if (!exactKeys(approval, LEGACY_PLAN_FINGERPRINT_KEYS) || !identifier(approval.shotId) ||
-      !object(approval.project) || !identifier(approval.project.id) || !frameLayers(approval.extra)) return null;
+  if (
+    !exactKeys(approval, LEGACY_PLAN_FINGERPRINT_KEYS) ||
+    !identifier(approval.shotId) ||
+    !object(approval.project) ||
+    !identifier(approval.project.id) ||
+    !frameLayers(approval.extra)
+  )
+    return null;
   const approvedShots = approval.project.shots;
   const approvedShot = Array.isArray(approvedShots)
     ? approvedShots.find((candidate) => object(candidate) && candidate.id === approval.shotId)
     : undefined;
-  if (!object(approvedShot) || typeof approvedShot.setup !== "string" || !approvedShot.setup.trim()) return null;
+  if (!object(approvedShot) || typeof approvedShot.setup !== "string" || !approvedShot.setup.trim())
+    return null;
   return {
     version: 1,
     projectId: approval.project.id,
@@ -216,42 +265,99 @@ export function stageReadiness(project: Project, shotId: string): ProductionGate
     (asset) => asset.tab === "diagrams" && typeof asset.url === "string" && asset.url.trim(),
   );
   if (!hasOverhead)
-    issues.push(issue("missing-overhead", "Attach the source overhead diagram in the binder before reviewing this setup."));
+    issues.push(
+      issue(
+        "missing-overhead",
+        "Attach the source overhead diagram in the binder before reviewing this setup.",
+      ),
+    );
   if (!project.floor.label.trim())
-    issues.push(issue("missing-floor-label", "Name the Stage floor plan so its source setup is identifiable."));
+    issues.push(
+      issue(
+        "missing-floor-label",
+        "Name the Stage floor plan so its source setup is identifiable.",
+      ),
+    );
   const structuralItems = project.floor.items.filter((item) => !!STRUCTURAL_FLOOR_KINDS[item.kind]);
   if (!structuralItems.length)
-    issues.push(issue("missing-floor-items", "Draw structural room geography on the Stage floor plan."));
+    issues.push(
+      issue("missing-floor-items", "Draw structural room geography on the Stage floor plan."),
+    );
   else {
     const invalidItems = project.floor.items.filter((item) => !validFloorItem(item));
     if (invalidItems.length) {
-      const identities = invalidItems.map((item) => `${item.label.trim() || item.kind} (${item.id.trim() || "missing ID"})`).join(", ");
-      issues.push(issue("invalid-floor-items", `Fix Stage item(s) ${identities}: each needs a named, finite, positive-size position inside the floor plan.`));
+      const identities = invalidItems
+        .map((item) => `${item.label.trim() || item.kind} (${item.id.trim() || "missing ID"})`)
+        .join(", ");
+      issues.push(
+        issue(
+          "invalid-floor-items",
+          `Fix Stage item(s) ${identities}: each needs a named, finite, positive-size position inside the floor plan.`,
+        ),
+      );
     }
   }
-  if (!project.floor.homes.length || project.floor.homes.some((home) => !home.id.trim() || !home.name.trim() ||
-      !finiteNormalized(home.x) || !finiteNormalized(home.y) || !Number.isFinite(home.facing)))
-    issues.push(issue("missing-floor-homes", "Add named cast home positions to the Stage floor plan."));
+  if (
+    !project.floor.homes.length ||
+    project.floor.homes.some(
+      (home) =>
+        !home.id.trim() ||
+        !home.name.trim() ||
+        !finiteNormalized(home.x) ||
+        !finiteNormalized(home.y) ||
+        !Number.isFinite(home.facing),
+    )
+  )
+    issues.push(
+      issue("missing-floor-homes", "Add named cast home positions to the Stage floor plan."),
+    );
 
   const camera = project.floor.cameras.find((candidate) => candidate.shotId === shot.id);
   if (!camera) {
-    issues.push(issue("missing-shot-camera", "Place a camera for this setup on the Stage floor plan."));
+    issues.push(
+      issue("missing-shot-camera", "Place a camera for this setup on the Stage floor plan."),
+    );
   } else {
-    const cameraValid = !!camera.id.trim() && camera.setup === shot.setup && finiteNormalized(camera.x) &&
-      finiteNormalized(camera.y) && Number.isFinite(camera.angle) && Number.isFinite(camera.fov) &&
-      camera.fov > 0 && camera.fov <= 180;
+    const cameraValid =
+      !!camera.id.trim() &&
+      camera.setup === shot.setup &&
+      finiteNormalized(camera.x) &&
+      finiteNormalized(camera.y) &&
+      Number.isFinite(camera.angle) &&
+      Number.isFinite(camera.fov) &&
+      camera.fov > 0 &&
+      camera.fov <= 180;
     if (!cameraValid)
-      issues.push(issue("invalid-shot-camera", "Use a finite in-room camera linked to this exact setup with a valid view cone."));
+      issues.push(
+        issue(
+          "invalid-shot-camera",
+          "Use a finite in-room camera linked to this exact setup with a valid view cone.",
+        ),
+      );
     const targetId = typeof camera.targetId === "string" ? camera.targetId.trim() : "";
     const target = targetId
-      ? shot.blocking?.figures.find((figure) => figure.id === targetId) ?? project.floor.items.find((item) => item.id === targetId)
+      ? (shot.blocking?.figures.find((figure) => figure.id === targetId) ??
+        project.floor.items.find((item) => item.id === targetId))
       : undefined;
-    const targetValid = !!target && finiteNormalized(target.x) && finiteNormalized(target.y) &&
+    const targetValid =
+      !!target &&
+      finiteNormalized(target.x) &&
+      finiteNormalized(target.y) &&
       Math.hypot(target.x - camera.x, target.y - camera.y) > 1e-6;
     if (!targetId || !targetValid) {
-      issues.push(issue("invalid-camera-target", "Aim this setup's camera at a resolved, non-coincident Stage figure or room item."));
+      issues.push(
+        issue(
+          "invalid-camera-target",
+          "Aim this setup's camera at a resolved, non-coincident Stage figure or room item.",
+        ),
+      );
     } else if (cameraValid && Math.abs(relativeBearing(camera, target)) > camera.fov / 2 + 1e-9) {
-      issues.push(issue("invalid-camera-cone", "Keep the authored camera target inside this setup's view cone."));
+      issues.push(
+        issue(
+          "invalid-camera-cone",
+          "Keep the authored camera target inside this setup's view cone.",
+        ),
+      );
     }
   }
   if (!shot.setup.trim())
@@ -260,15 +366,31 @@ export function stageReadiness(project: Project, shotId: string): ProductionGate
   const blocking = shot.blocking?.figures ?? [];
   if (!blocking.length) {
     issues.push(issue("missing-blocking", "Place the setup's cast on the Stage floor plan."));
-  } else if (blocking.some((figure) => !figure.id.trim() || !figure.name.trim() || !finiteNormalized(figure.x) ||
-      !finiteNormalized(figure.y) || !Number.isFinite(figure.facing)) || new Set(blocking.map((figure) => figure.id)).size !== blocking.length) {
-    issues.push(issue("unnamed-blocking", "Every blocked figure must have a stable ID and visible name."));
+  } else if (
+    blocking.some(
+      (figure) =>
+        !figure.id.trim() ||
+        !figure.name.trim() ||
+        !finiteNormalized(figure.x) ||
+        !finiteNormalized(figure.y) ||
+        !Number.isFinite(figure.facing),
+    ) ||
+    new Set(blocking.map((figure) => figure.id)).size !== blocking.length
+  ) {
+    issues.push(
+      issue("unnamed-blocking", "Every blocked figure must have a stable ID and visible name."),
+    );
   }
 
   const blockingById = new Map(blocking.map((figure) => [figure.id, figure]));
   const visibleFigures = shot.sketch?.stamps?.filter((stamp) => stamp.kind === "figure") ?? [];
   if (!visibleFigures.length) {
-    issues.push(issue("unlinked-frame-plan", "Place every visible Frame figure through named setup blocking and the shot's cast identity."));
+    issues.push(
+      issue(
+        "unlinked-frame-plan",
+        "Place every visible Frame figure through named setup blocking and the shot's cast identity.",
+      ),
+    );
   } else {
     const invalidStamps = visibleFigures.filter((stamp) => {
       const figure = stamp.figureId ? blockingById.get(stamp.figureId) : undefined;
@@ -276,7 +398,12 @@ export function stageReadiness(project: Project, shotId: string): ProductionGate
     });
     if (invalidStamps.length) {
       const identities = invalidStamps.map((stamp) => stamp.id.trim() || "missing ID").join(", ");
-      issues.push(issue("unlinked-frame-plan", `Link Frame figure stamp(s) ${identities} through named setup blocking and the shot's cast identity.`));
+      issues.push(
+        issue(
+          "unlinked-frame-plan",
+          `Link Frame figure stamp(s) ${identities} through named setup blocking and the shot's cast identity.`,
+        ),
+      );
     }
   }
 
@@ -346,11 +473,21 @@ export function framePlanReviewFingerprintMatches(
 ): boolean {
   const parsed = parseFramePlanReviewFingerprint(value);
   const shot = shotFor(project, shotId);
-  if (!parsed || !shot || parsed.projectId !== project.id || parsed.shotId !== shotId ||
-      parsed.setup !== shot.setup || JSON.stringify(parsed.layers) !== JSON.stringify(layers)) return false;
+  if (
+    !parsed ||
+    !shot ||
+    parsed.projectId !== project.id ||
+    parsed.shotId !== shotId ||
+    parsed.setup !== shot.setup ||
+    JSON.stringify(parsed.layers) !== JSON.stringify(layers)
+  )
+    return false;
   if (parsed.version === 1) {
     const approval = JSON.parse(value) as { project: Project };
-    return JSON.stringify(planReviewProject(approval.project)) === JSON.stringify(planReviewProject(project));
+    return (
+      JSON.stringify(planReviewProject(approval.project)) ===
+      JSON.stringify(planReviewProject(project))
+    );
   }
   if (parsed.version === 2)
     return legacyCompactPlanReviewFingerprintMatches(value, project, shotId, layers);
@@ -374,12 +511,31 @@ export function storyboardReadiness(
   const stage = stageReadiness(project, shotId);
   if (!stage.ready) return stage;
   if (!guide || guide.captureKind !== "plan" || !guide.layers)
-    return report([issue("missing-plan-capture", "Capture the current Frame plan locally before creating a storyboard.")]);
-  if (guide.shotId !== shotId || guide.sourceFrameUrl !== "" || guide.sourceFingerprint !== JSON.stringify(project))
-    return report([issue("stale-plan-capture", "The Project or setup changed after plan capture. Capture and review it again.")]);
+    return report([
+      issue(
+        "missing-plan-capture",
+        "Capture the current Frame plan locally before creating a storyboard.",
+      ),
+    ]);
+  if (
+    guide.shotId !== shotId ||
+    guide.sourceFrameUrl !== "" ||
+    guide.sourceFingerprint !== JSON.stringify(project)
+  )
+    return report([
+      issue(
+        "stale-plan-capture",
+        "The Project or setup changed after plan capture. Capture and review it again.",
+      ),
+    ]);
   const expected = framePlanReviewFingerprint(project, shotId, guide.layers);
   if (reviewedFingerprint !== expected)
-    return report([issue("missing-plan-review", "Confirm that the captured Frame plan matches the source overhead before creating a storyboard.")]);
+    return report([
+      issue(
+        "missing-plan-review",
+        "Confirm that the captured Frame plan matches the source overhead before creating a storyboard.",
+      ),
+    ]);
   return report([]);
 }
 
@@ -394,34 +550,80 @@ function isGeneratedAsset(version: NonNullable<Shot["frameHistory"]>[number] | u
 type FrameVersion = NonNullable<Shot["frameHistory"]>[number];
 type ReviewedPlanState = "missing" | "stale" | "current";
 
-function reviewedPlanState(version: FrameVersion | undefined, project?: Project): ReviewedPlanState {
+function reviewedPlanState(
+  version: FrameVersion | undefined,
+  project?: Project,
+  allowDirectStill = false,
+): ReviewedPlanState {
   const composition = version?.composition;
   const reviewed = composition?.reviewedPlan;
   const references = version?.references;
   const referenceIds = version?.asset?.provenance.referenceAssetIds;
-  if (!version || version.kind !== "storyboard" || !isGeneratedAsset(version) || !composition || !object(reviewed) ||
-      !exactKeys(reviewed, REVIEWED_PLAN_KEYS) || reviewed.version !== 1 || !identifier(reviewed.projectId) ||
-      !identifier(reviewed.shotId) || typeof reviewed.setup !== "string" || !reviewed.setup.trim() ||
-      !identifier(reviewed.planAssetId) || !digest(reviewed.planSha256) || !digest(reviewed.sourceProjectSha256) ||
-      typeof reviewed.approvalFingerprint !== "string" || reviewed.approvalFingerprint.length > 8 * 1024 * 1024 ||
-      composition.sourceFrameUrl !== "" || composition.sourceShotId !== reviewed.shotId ||
-      composition.sourceProjectSha256 !== reviewed.sourceProjectSha256 || composition.guideSha256 !== reviewed.planSha256 ||
-      !composition.layers || !Array.isArray(references) || references.length !== 1 ||
-      references[0]?.sha256 !== reviewed.planSha256 ||
-      !Array.isArray(referenceIds) || referenceIds.length !== 1 || referenceIds[0] !== reviewed.planAssetId)
+  const validKind =
+    version?.kind === "storyboard" || (allowDirectStill && version?.kind === "still");
+  if (
+    !version ||
+    !validKind ||
+    !isGeneratedAsset(version) ||
+    !composition ||
+    !object(reviewed) ||
+    !exactKeys(reviewed, REVIEWED_PLAN_KEYS) ||
+    reviewed.version !== 1 ||
+    !identifier(reviewed.projectId) ||
+    !identifier(reviewed.shotId) ||
+    typeof reviewed.setup !== "string" ||
+    !reviewed.setup.trim() ||
+    !identifier(reviewed.planAssetId) ||
+    !digest(reviewed.planSha256) ||
+    !digest(reviewed.sourceProjectSha256) ||
+    typeof reviewed.approvalFingerprint !== "string" ||
+    reviewed.approvalFingerprint.length > 8 * 1024 * 1024 ||
+    composition.sourceFrameUrl !== "" ||
+    composition.sourceShotId !== reviewed.shotId ||
+    composition.sourceProjectSha256 !== reviewed.sourceProjectSha256 ||
+    composition.guideSha256 !== reviewed.planSha256 ||
+    !composition.layers ||
+    !Array.isArray(references) ||
+    references.length !== 1 ||
+    references[0]?.sha256 !== reviewed.planSha256 ||
+    !Array.isArray(referenceIds) ||
+    referenceIds.length !== 1 ||
+    referenceIds[0] !== reviewed.planAssetId
+  )
     return "missing";
   const approval = parseFramePlanReviewFingerprint(reviewed.approvalFingerprint);
-  if (!approval || approval.projectId !== reviewed.projectId || approval.shotId !== reviewed.shotId ||
-      approval.setup !== reviewed.setup || JSON.stringify(approval.layers) !== JSON.stringify(composition.layers)) return "missing";
+  if (
+    !approval ||
+    approval.projectId !== reviewed.projectId ||
+    approval.shotId !== reviewed.shotId ||
+    approval.setup !== reviewed.setup ||
+    JSON.stringify(approval.layers) !== JSON.stringify(composition.layers)
+  )
+    return "missing";
   if (!project) return "current";
-  return project.id === reviewed.projectId && shotFor(project, reviewed.shotId)?.setup === reviewed.setup &&
-    framePlanReviewFingerprintMatches(reviewed.approvalFingerprint, project, reviewed.shotId, composition.layers)
-    ? "current" : "stale";
+  return project.id === reviewed.projectId &&
+    shotFor(project, reviewed.shotId)?.setup === reviewed.setup &&
+    framePlanReviewFingerprintMatches(
+      reviewed.approvalFingerprint,
+      project,
+      reviewed.shotId,
+      composition.layers,
+    )
+    ? "current"
+    : "stale";
 }
 
 function reviewedPlanIssue(state: ReviewedPlanState): ProductionGateIssue | null {
-  if (state === "missing") return issue("missing-plan-provenance", "The selected storyboard is not descended from a persisted, reviewed Frame plan.");
-  if (state === "stale") return issue("stale-plan-provenance", "The Stage or authored setup changed after this storyboard's plan approval. Capture and review a current plan.");
+  if (state === "missing")
+    return issue(
+      "missing-plan-provenance",
+      "The selected storyboard is not descended from a persisted, reviewed Frame plan.",
+    );
+  if (state === "stale")
+    return issue(
+      "stale-plan-provenance",
+      "The Stage or authored setup changed after this storyboard's plan approval. Capture and review a current plan.",
+    );
   return null;
 }
 
@@ -434,7 +636,8 @@ export function photorealPlacementFingerprint(project: Project, shotId: string):
     shot.frameKind !== "storyboard" ||
     selected?.kind !== "storyboard" ||
     !selected.asset?.assetId ||
-    !isGeneratedAsset(selected) || reviewedPlanState(selected, project) !== "current"
+    !isGeneratedAsset(selected) ||
+    reviewedPlanState(selected, project) !== "current"
   )
     return null;
   return fingerprint("storyboard-placement-review", project, shotId, selected.asset.assetId);
@@ -449,15 +652,35 @@ export function photorealReadiness(
   if (!stage.ready) return stage;
   const shot = shotFor(project, shotId);
   const expected = photorealPlacementFingerprint(project, shotId);
-  if (!shot || shot.frameKind !== "storyboard" || selectedVersion(shot)?.kind !== "storyboard" || !isGeneratedAsset(selectedVersion(shot)))
-    return report([issue("missing-selected-storyboard", "Select a generated storyboard from Frame history before creating a photoreal still.")]);
+  if (
+    !shot ||
+    shot.frameKind !== "storyboard" ||
+    selectedVersion(shot)?.kind !== "storyboard" ||
+    !isGeneratedAsset(selectedVersion(shot))
+  )
+    return report([
+      issue(
+        "missing-selected-storyboard",
+        "Select a generated storyboard from Frame history before creating a photoreal still.",
+      ),
+    ]);
   const planState = reviewedPlanState(selectedVersion(shot), project);
   const planIssue = reviewedPlanIssue(planState);
   if (planIssue) return report([planIssue]);
   if (!expected)
-    return report([issue("missing-plan-provenance", "The selected storyboard is not descended from a persisted, reviewed Frame plan.")]);
+    return report([
+      issue(
+        "missing-plan-provenance",
+        "The selected storyboard is not descended from a persisted, reviewed Frame plan.",
+      ),
+    ]);
   if (reviewedFingerprint !== expected)
-    return report([issue("missing-placement-review", "Review the selected storyboard placement against the overhead before creating a photoreal still.")]);
+    return report([
+      issue(
+        "missing-placement-review",
+        "Review the selected storyboard placement against the overhead before creating a photoreal still.",
+      ),
+    ]);
   return report([]);
 }
 
@@ -470,7 +693,17 @@ export function storyboardAncestry(shot: Shot, project?: Project): ProductionGat
     !selected.asset?.assetId ||
     !isGeneratedAsset(selected)
   )
-    return report([issue("missing-selected-photoreal", "Select a generated photoreal still before creating video.")]);
+    return report([
+      issue(
+        "missing-selected-photoreal",
+        "Select a generated photoreal still before creating video.",
+      ),
+    ]);
+  const directPlanState = reviewedPlanState(selected, project, true);
+  if (directPlanState !== "missing") {
+    const planIssue = reviewedPlanIssue(directPlanState);
+    return planIssue ? report([planIssue]) : report([]);
+  }
 
   const history = shot.frameHistory ?? [];
   const byAssetId = new Map(
@@ -479,7 +712,9 @@ export function storyboardAncestry(shot: Shot, project?: Project): ProductionGat
       .map((version) => [version.asset!.assetId, version]),
   );
   const pending = Array.isArray(selected.asset.provenance.referenceAssetIds)
-    ? selected.asset.provenance.referenceAssetIds.filter((value): value is string => typeof value === "string")
+    ? selected.asset.provenance.referenceAssetIds.filter(
+        (value): value is string => typeof value === "string",
+      )
     : [];
   const visited = new Set<string>();
   let planState: ReviewedPlanState | null = null;
@@ -501,11 +736,20 @@ export function storyboardAncestry(shot: Shot, project?: Project): ProductionGat
     const planIssue = reviewedPlanIssue(planState);
     return planIssue ? report([planIssue]) : report([]);
   }
-  return report([issue("missing-storyboard-ancestor", "The selected still has no verified storyboard ancestor in Frame history.")]);
+  return report([
+    issue(
+      "missing-storyboard-ancestor",
+      "The selected still has no verified storyboard ancestor in Frame history.",
+    ),
+  ]);
 }
 
 /** Exact review identity for a paid edit using one currently selected still as its source. */
-export function imageEditReviewFingerprint(project: Project, shotId: string, sourceShotId: string): string | null {
+export function imageEditReviewFingerprint(
+  project: Project,
+  shotId: string,
+  sourceShotId: string,
+): string | null {
   const target = shotFor(project, shotId);
   const source = shotFor(project, sourceShotId);
   if (!target || !source?.frameUrl || !storyboardAncestry(source, project).ready) return null;
@@ -528,11 +772,21 @@ export function imageEditReadiness(
   const source = shotFor(project, sourceShotId);
   const ancestry = source
     ? storyboardAncestry(source, project)
-    : report([issue("missing-selected-photoreal", "Select a generated photoreal still before editing from it.")]);
+    : report([
+        issue(
+          "missing-selected-photoreal",
+          "Select a generated photoreal still before editing from it.",
+        ),
+      ]);
   const issues = [...stage.issues, ...ancestry.issues];
   const expected = imageEditReviewFingerprint(project, shotId, sourceShotId);
   if (!expected || reviewedFingerprint !== expected)
-    issues.push(issue("missing-image-review", "Review the exact current source still and Stage setup before starting this paid image edit."));
+    issues.push(
+      issue(
+        "missing-image-review",
+        "Review the exact current source still and Stage setup before starting this paid image edit.",
+      ),
+    );
   return report(issues);
 }
 
@@ -580,7 +834,12 @@ export function videoReadiness(
   const issues = [...stage.issues, ...ancestry.issues];
   const expectedReview = videoReviewFingerprint(project, shotId, intent);
   if (ancestry.ready && (!expectedReview || reviewedFingerprint !== expectedReview))
-    issues.push(issue("missing-video-review", "Review the selected still, its key-frame intent, and the planned cut before creating video."));
+    issues.push(
+      issue(
+        "missing-video-review",
+        "Review the selected still, its key-frame intent, and the planned cut before creating video.",
+      ),
+    );
   return report(issues);
 }
 

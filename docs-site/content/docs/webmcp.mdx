@@ -5,7 +5,7 @@ description: Discover and use ReelBinder Studio tools from a browser-connected M
 
 ReelBinder Studio exposes a browser-side [WebMCP](https://webmachinelearning.github.io/webmcp/) tool surface. A desktop agent can discover the tools in the open Studio page and invoke bounded navigation, inspection, and approved project-edit actions through a local relay.
 
-> **Release status:** The currently deployed hosted release, `20260924-957017c` at source commit `957017ca`, verifies **20** `document.modelContext` tools. The catalog below describes the current hosted release. Always call `webmcp_list_tools` as the runtime source of truth.
+> **Release status:** The currently deployed hosted release (`app29-final-study-20261008-r44`, source `706b084`) registers **26** `document.modelContext` tools, verified against the live [studio.reelbinder.app](https://studio.reelbinder.app) bundle on 2026-10-08. The catalog below describes the current hosted release. Always call `webmcp_list_tools` as the runtime source of truth.
 
 The integration lives in the Studio frontend. A hosted target must be running a release that contains the WebMCP registry; a source commit alone does not change the hosted tool catalog. The tools operate on the current browser page and visitor session, not on a separate shared project database.
 
@@ -41,7 +41,7 @@ The relay itself provides three helpers:
 
 ## Current hosted release
 
-The deployed hosted release `20260924-957017c` (source commit `957017ca`) currently exposes these 20 `document.modelContext` tools:
+The deployed hosted release currently exposes these 26 `document.modelContext` tools:
 
 | Tool | Access | Purpose |
 | --- | --- | --- |
@@ -64,7 +64,13 @@ The deployed hosted release `20260924-957017c` (source commit `957017ca`) curren
 | `sync_shot_timeline` | Approved mutation | Apply an explicit revision-guarded picture-clip order and optional drops while preserving non-picture tracks and clip metadata. |
 | `patch_frame_history` | Approved mutation | Remove named inactive frame-history versions without allowing the active frame to be removed. |
 | `import_still` | Approved mutation | Attach a validated local raster data URL to an explicitly identified setup while preserving prior history. |
+| `get_connection_status` | Read | Return the visitor's configured Google Cloud and Parallel connections plus server-reported capability status; secrets are never returned. |
+| `start_google_connection` | Interaction | Start the server-owned Google Cloud OAuth setup flow in the active page; it discovers a Cloud project, checks billing, and stores encrypted session credentials. No API keys. |
+| `test_connection` | Read | Run the non-generation access probe for one configured connection. |
+| `disconnect_connection` | Interaction | Disconnect one visitor-scoped provider connection and delete the saved secret from the session store. |
 | `stage_assistant_question` | Interaction | Stage a question in the in-app Production Assistant without changing Project data. |
+| `get_production_checks` | Read | List the current production checks: local preflight findings and stage continuity checks for the focused setup, with the setup/element id each concerns. |
+| `search_parallel` | Read (consumes one Parallel research credit) | Run one Parallel web search on the given question and return cited http(s) sources for facts the project does not record; the same call lands as a row in the Research tab. |
 
 Use `webmcp_list_tools` as the runtime source of truth. The deployed check also verified `set_view({ view: "script" })` and `get_studio_state`; it verified the relay assets `/webmcp/embed.js`, `/webmcp/widget.html`, and `/webmcp/PROVENANCE.json`.
 

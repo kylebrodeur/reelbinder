@@ -1,9 +1,16 @@
 import { KeyFrameGuidance } from "@/components/app/key-frame-guidance";
-import { ExternalLink, Film, ImageIcon, Loader2, RefreshCw, Sparkles, Upload, Wand2 } from "lucide-react";
+import {
+  ExternalLink,
+  Film,
+  ImageIcon,
+  Loader2,
+  Sparkles,
+  Upload,
+  Wand2,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BlockingCanvas } from "@/components/app/blocking-canvas";
-import { ConnectionsControl } from "@/components/app/cinema-connections";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -13,13 +20,21 @@ import {
   imageGenerationAvailable,
   imageProbeReadiness,
   subscribeConnectionProbes,
-  type CinemaConnection,
 } from "@/lib/cinema-client";
 import { appendFrameVersions, imageReferenceAvailable } from "@/lib/cinema-images";
-import { continueFromPrevious, generateShotFrame, restyleShotFrame, resumeShotImage } from "@/lib/imagine-flow";
+import {
+  continueFromPrevious,
+  generateShotFrame,
+  restyleShotFrame,
+  resumeShotImage,
+} from "@/lib/imagine-flow";
 import { getImageRecovery, clearResolvedImageRecovery } from "@/lib/image-recovery";
 import { fileToJpegDataUrl } from "@/lib/media";
-import { capturePlanComposition, hasFrameComposition, type FrameCompositionGuide } from "@/lib/frame-composition";
+import {
+  capturePlanComposition,
+  hasFrameComposition,
+  type FrameCompositionGuide,
+} from "@/lib/frame-composition";
 import { cameraForShot, projectFrameToFloor } from "@/lib/floor";
 import { coverageLabel } from "@/lib/lining";
 import {
@@ -35,24 +50,55 @@ import {
 } from "@/lib/production-gates";
 import { useSlate } from "@/lib/store";
 import type { Shot } from "@/lib/types";
+import { useGenerationCredits } from "@/lib/use-generation-credits";
 
 import { DEFAULT_FRAME_LAYERS, type FrameLayerSettings } from "@/lib/frame-renderer";
 
-export function ImagineActions({ shot, compact = false, compositionPreview = false, frameLayers = DEFAULT_FRAME_LAYERS }: { shot: Shot; compact?: boolean; compositionPreview?: boolean; frameLayers?: FrameLayerSettings }) {
+export function ImagineActions({
+  shot,
+  compact = false,
+  compositionPreview = false,
+  frameLayers = DEFAULT_FRAME_LAYERS,
+}: {
+  shot: Shot;
+  compact?: boolean;
+  compositionPreview?: boolean;
+  frameLayers?: FrameLayerSettings;
+}) {
   const project = useSlate((state) => state.project);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  const compositionContext = useRef({ projectId: project.id, shotId: shot.id, frameLayers, compositionPreview });
-  compositionContext.current = { projectId: project.id, shotId: shot.id, frameLayers, compositionPreview };
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const compositionContext = useRef({
+    projectId: project.id,
+    shotId: shot.id,
+    frameLayers,
+    compositionPreview,
+  });
+  compositionContext.current = {
+    projectId: project.id,
+    shotId: shot.id,
+    frameLayers,
+    compositionPreview,
+  };
   const patchShot = useSlate((state) => state.patchShot);
   const [, setRecoveryRevision] = useState(0);
   const recoveryState = (() => {
-    try { return { record: getImageRecovery(project.id, shot.id), error: "" }; }
-    catch (error) { return { record: null, error: error instanceof Error ? error.message : "Image recovery is unavailable." }; }
+    try {
+      return { record: getImageRecovery(project.id, shot.id), error: "" };
+    } catch (error) {
+      return {
+        record: null,
+        error: error instanceof Error ? error.message : "Image recovery is unavailable.",
+      };
+    }
   })();
   const [busy, setBusy] = useState<string | null>(null);
   const [direction, setDirection] = useState("");
-  const [connections, setConnections] = useState<CinemaConnection[]>([]);
   const [connectionId, setConnectionId] = useState("");
   const [loading, setLoading] = useState(false);
   const [imageReady, setImageReady] = useState(false);
@@ -70,24 +116,51 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   const previous = index > 0 ? project.shots[index - 1] : undefined;
   const connectionProbe = connectionId ? getConnectionProbe(connectionId) : undefined;
   const imageConnectionReadiness = imageProbeReadiness(connectionProbe);
-  const canRun = !!connectionId && imageGenerationAvailable(imageReady, connectionProbe) && !busy && !loading && !recoveryState.record && !recoveryState.error;
+  const canRun =
+    !!connectionId &&
+    imageGenerationAvailable(imageReady, connectionProbe) &&
+    !busy &&
+    !loading &&
+    !recoveryState.record &&
+    !recoveryState.error;
   const canEdit = imageReferenceAvailable(shot.frameUrl);
+  const credits = useGenerationCredits(connectionId || undefined);
+  const storyboardCredits = credits && !credits.admin ? credits.byType.storyboard : null;
+  const photorealCredits = credits && !credits.admin ? credits.byType.photoreal : null;
+  const storyboardOut = storyboardCredits !== null && storyboardCredits.remaining <= 0;
+  const photorealOut = photorealCredits !== null && photorealCredits.remaining <= 0;
   const canReferencePrevious = imageReferenceAvailable(previous?.frameUrl ?? null);
   const currentAsset = shot.frameHistory?.find((version) => version.url === shot.frameUrl)?.asset;
   const stageGate = stageReadiness(project, shot.id);
   const planFingerprint = framePlanReviewFingerprint(project, shot.id, frameLayers);
-  const capturedLayersCurrent = !!planGuide?.layers && JSON.stringify(planGuide.layers) === JSON.stringify(frameLayers);
+  const capturedLayersCurrent =
+    !!planGuide?.layers && JSON.stringify(planGuide.layers) === JSON.stringify(frameLayers);
   const planGate = capturedLayersCurrent
     ? storyboardReadiness(project, shot.id, planGuide, overheadReview)
-    : { ready: false, issues: [{ code: "stale-plan-capture" as const, message: "The visible Frame layers changed after capture. Capture and review the plan again." }] };
+    : {
+        ready: false,
+        issues: [
+          {
+            code: "stale-plan-capture" as const,
+            message:
+              "The visible Frame layers changed after capture. Capture and review the plan again.",
+          },
+        ],
+      };
+  const planOnlyStillGate = planGuide?.captureKind === "plan" ? planGate : null;
   const placementFingerprint = photorealPlacementFingerprint(project, shot.id);
   const stillGate = photorealReadiness(project, shot.id, placementReview);
+  const stillReady = stillGate.ready || planOnlyStillGate?.ready === true;
   const selectedStoryboard = !!placementFingerprint;
   const selectedReviewedStill = storyboardAncestry(shot, project).ready;
   const imageReviewFingerprint = imageEditReviewFingerprint(project, shot.id, shot.id);
   const imageGate = imageEditReadiness(project, shot.id, shot.id, imageReview);
-  const previousReviewFingerprint = previous ? imageEditReviewFingerprint(project, shot.id, previous.id) : null;
-  const previousImageGate = previous ? imageEditReadiness(project, shot.id, previous.id, imageReview) : null;
+  const previousReviewFingerprint = previous
+    ? imageEditReviewFingerprint(project, shot.id, previous.id)
+    : null;
+  const previousImageGate = previous
+    ? imageEditReadiness(project, shot.id, previous.id, imageReview)
+    : null;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -96,14 +169,11 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
       const [available, health] = await Promise.all([getCinemaConnections(), getCinemaHealth()]);
       const cloud = available.filter(
         (connection) =>
-          connection.provider === "google-cloud" && connection.expiresAt * 1000 > Date.now(),
+          connection.provider === "google-cloud" &&
+          connection.status === "configured" &&
+          connection.expiresAt * 1000 > Date.now(),
       );
-      setConnections(cloud);
-      setConnectionId((id) =>
-        cloud.some((connection) => connection.connectionId === id)
-          ? id
-          : (cloud[0]?.connectionId ?? ""),
-      );
+      setConnectionId(cloud[0]?.connectionId ?? "");
       setImageReady(health.capabilities.image?.status === "configured");
       setModel(health.capabilities.image?.model ?? null);
       if (health.capabilities.image?.status !== "configured")
@@ -111,7 +181,6 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
     } catch (error) {
       setImageReady(false);
       setConnectionId("");
-      setConnections([]);
       setConnectionError(
         error instanceof Error ? error.message : "The cinema service is unavailable.",
       );
@@ -122,7 +191,10 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   useEffect(() => {
     void refresh();
   }, [refresh]);
-  useEffect(() => subscribeConnectionProbes(() => setProbeRevision((revision) => revision + 1)), []);
+  useEffect(
+    () => subscribeConnectionProbes(() => setProbeRevision((revision) => revision + 1)),
+    [],
+  );
   useEffect(() => {
     setLastResult(null);
     setLastJobId(null);
@@ -144,24 +216,33 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
   ) => {
     const current = useSlate.getState();
     const selectedId = current.selectedId ?? current.project.shots[0]?.id;
-    if (!mounted.current || current.project.id !== project.id ||
-        compositionContext.current.projectId !== project.id ||
-        compositionContext.current.shotId !== shot.id || selectedId !== shot.id ||
-        !current.project.shots.some((candidate) => candidate.id === shot.id)) {
+    if (
+      !mounted.current ||
+      current.project.id !== project.id ||
+      compositionContext.current.projectId !== project.id ||
+      compositionContext.current.shotId !== shot.id ||
+      selectedId !== shot.id ||
+      !current.project.shots.some((candidate) => candidate.id === shot.id)
+    ) {
       toast.error("The selected Project or setup changed. Use the current Frame controls again.");
       return;
     }
     try {
       const recovery = getImageRecovery(project.id, shot.id);
-      if (label === "resume" ? recovery?.status !== "pending" :
-          label === "restore" ? recovery?.status !== "succeeded" : !!recovery) {
+      if (
+        label === "resume"
+          ? recovery?.status !== "pending"
+          : label === "restore"
+            ? recovery?.status !== "succeeded"
+            : !!recovery
+      ) {
         toast.error("Resolve the saved image request before starting a new image.");
-        setRecoveryRevision(value => value + 1);
+        setRecoveryRevision((value) => value + 1);
         return;
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Image recovery is unavailable.");
-      setRecoveryRevision(value => value + 1);
+      setRecoveryRevision((value) => value + 1);
       return;
     }
     setBusy(label);
@@ -180,17 +261,26 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
       toast.error(error instanceof Error ? error.message : "The image job could not finish.");
     } finally {
       setBusy(null);
-      setRecoveryRevision(value => value + 1);
+      setRecoveryRevision((value) => value + 1);
     }
   };
   const enableNewImage = () => {
     const state = useSlate.getState();
     const selectedId = state.selectedId ?? state.project.shots[0]?.id;
-    if (!mounted.current || state.project.id !== project.id || selectedId !== shot.id ||
-      compositionContext.current.projectId !== project.id || compositionContext.current.shotId !== shot.id) return;
-    try { clearResolvedImageRecovery(project.id, shot.id); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "The saved request is not resolved."); }
-    setRecoveryRevision(value => value + 1);
+    if (
+      !mounted.current ||
+      state.project.id !== project.id ||
+      selectedId !== shot.id ||
+      compositionContext.current.projectId !== project.id ||
+      compositionContext.current.shotId !== shot.id
+    )
+      return;
+    try {
+      clearResolvedImageRecovery(project.id, shot.id);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The saved request is not resolved.");
+    }
+    setRecoveryRevision((value) => value + 1);
   };
   const options = { connectionId, direction, onJob: setLastJobId };
 
@@ -209,9 +299,19 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
       const guide = await capturePlanComposition(project, shot.id, frameLayers);
       const state = useSlate.getState();
       const selectedId = state.selectedId ?? state.project.shots[0]?.id;
-      if (!mounted.current || selectedId !== shot.id ||
-          source !== JSON.stringify({ project: state.project, shotId: shot.id, frameLayers: compositionContext.current.frameLayers }))
-        throw new Error("The Project, setup, or visible Frame layers changed during capture. Capture the current plan again.");
+      if (
+        !mounted.current ||
+        selectedId !== shot.id ||
+        source !==
+          JSON.stringify({
+            project: state.project,
+            shotId: shot.id,
+            frameLayers: compositionContext.current.frameLayers,
+          })
+      )
+        throw new Error(
+          "The Project, setup, or visible Frame layers changed during capture. Capture the current plan again.",
+        );
       setPlanGuide(guide);
       setOverheadReview(null);
       setPlacementReview(null);
@@ -272,39 +372,75 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
     >
       {recoveryState.error ? (
         <p className="text-xs text-destructive" role="alert">
-          Image recovery cannot be read: {recoveryState.error} New image requests are blocked until recovery is available.
+          Image recovery cannot be read: {recoveryState.error} New image requests are blocked until
+          recovery is available.
         </p>
       ) : null}
       {recoveryState.record ? (
-        <div className="space-y-2 rounded-md border border-border p-2" role="status" aria-label="Saved image request">
+        <div
+          className="space-y-2 rounded-md border border-border p-2"
+          role="status"
+          aria-label="Saved image request"
+        >
           <p className="text-xs">
             {recoveryState.record.status === "pending"
               ? "An image request is unresolved. Resume its saved request; this keeps the same submission identity."
               : `The saved image request ${recoveryState.record.status === "succeeded" ? "completed" : "failed"}. Review its result before starting another image.`}
           </p>
-          {recoveryState.record.error ? <p className="text-xs text-destructive">{recoveryState.record.error}</p> : null}
-          {recoveryState.record.jobId ? <p className="break-all font-mono text-[10px]">Image job: {recoveryState.record.jobId}</p> : null}
+          {recoveryState.record.error ? (
+            <p className="text-xs text-destructive">{recoveryState.record.error}</p>
+          ) : null}
+          {recoveryState.record.jobId ? (
+            <p className="break-all font-mono text-[10px]">
+              Image job: {recoveryState.record.jobId}
+            </p>
+          ) : null}
           {recoveryState.record.status === "succeeded" ? (
             <div className="space-y-2">
               {recoveryState.record.assets?.map((asset, index) => (
-                <a key={asset.assetId} href={asset.url} target="_blank" rel="noopener noreferrer"
-                  className="block text-xs text-steel underline">Open saved result {index + 1}</a>
+                <a
+                  key={asset.assetId}
+                  href={asset.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block text-xs text-steel underline"
+                >
+                  Open saved result {index + 1}
+                </a>
               ))}
-              <Button size="sm" variant="outline" disabled={!!busy}
-                onClick={() => void run("restore", () => resumeShotImage(shot.id, { onJob: setLastJobId }))}>
-                {busy === "restore" ? <Loader2 className="animate-spin" /> : null}Restore saved result
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!!busy}
+                onClick={() =>
+                  void run("restore", () => resumeShotImage(shot.id, { onJob: setLastJobId }))
+                }
+              >
+                {busy === "restore" ? <Loader2 className="animate-spin" /> : null}Restore saved
+                result
               </Button>
-              <p className="text-xs text-muted-foreground">Restore checks access to the completed job and keeps the result in frame history; it does not submit a new generation.</p>
+              <p className="text-xs text-muted-foreground">
+                Restore checks access to the completed job and keeps the result in frame history; it
+                does not submit a new generation.
+              </p>
             </div>
           ) : null}
           {recoveryState.record.status === "pending" ? (
-            <Button size="sm" variant="outline" disabled={!!busy}
-              onClick={() => void run("resume", () => resumeShotImage(shot.id, { onJob: setLastJobId }))}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!!busy}
+              onClick={() =>
+                void run("resume", () => resumeShotImage(shot.id, { onJob: setLastJobId }))
+              }
+            >
               {busy === "resume" ? <Loader2 className="animate-spin" /> : null}
               {recoveryState.record.jobId ? "Resume image job" : "Recover image request"}
             </Button>
           ) : (
-            <Button size="sm" variant="outline" disabled={!!busy} onClick={enableNewImage}>Enable a new image</Button>
+            <Button size="sm" variant="outline" disabled={!!busy} onClick={enableNewImage}>
+              Enable a new image
+            </Button>
           )}
         </div>
       ) : null}
@@ -321,50 +457,33 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
           <Sparkles className="size-3.5 text-primary" />
           <span className="text-xs font-semibold">Frame Generation</span>
         </div>
-        <div className="flex items-center gap-1">
-          <ConnectionsControl />
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            title="Refresh connections"
-            onClick={() => void refresh()}
-            disabled={!!busy || loading}
-          >
-            <RefreshCw className={loading ? "animate-spin" : ""} />
-          </Button>
-        </div>
+        {loading ? (
+          <span className="text-xs text-muted-foreground">Checking connection…</span>
+        ) : null}
       </div>
-      {connections.length > 0 ? (
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span>Connection</span>
-          <select
-            className="h-8 flex-1 rounded-md border border-input bg-background px-2 text-xs text-foreground"
-            value={connectionId}
-            onChange={(event) => setConnectionId(event.target.value)}
-            disabled={!!busy || loading}
-          >
-            {connections.map((connection, i) => (
-              <option key={connection.connectionId} value={connection.connectionId}>
-                Cloud {i + 1} · …{connection.connectionId.slice(-6)}
-              </option>
-            ))}
-          </select>
-        </label>
+      {connectionId ? (
+        <p className="text-xs text-muted-foreground" role="status">
+          Uses the active Google Cloud connection from Settings &gt; App. Renew, reconnect, or change
+          it in Settings &gt; App.
+        </p>
       ) : (
         <div className="rounded-md border border-dashed border-border/80 bg-muted/20 p-2 text-center text-xs text-muted-foreground">
           <span>No active Google Cloud connection. </span>
-          <span className="block mt-0.5 text-[11px]">Click <strong>Connections</strong> above to add your key.</span>
+          <span className="block mt-0.5 text-[11px]">
+            Open <strong>Settings &gt; App</strong> to connect Google Cloud, then return here.
+          </span>
         </div>
       )}
-      {(connectionError || (imageConnectionReadiness !== "unknown" && imageConnectionReadiness !== "verified")) && connections.length > 0 ? (
+      {(connectionError ||
+        (imageConnectionReadiness !== "unknown" && imageConnectionReadiness !== "verified")) &&
+      !!connectionId ? (
         <p className="text-xs text-destructive" role="status">
-          {connectionError ?? (
-            imageConnectionReadiness === "reauthenticate"
-              ? "Image access was rejected. Open Connections, renew or reconnect, then test image access again."
+          {connectionError ??
+            (imageConnectionReadiness === "reauthenticate"
+              ? "Image access was rejected. Open Settings > App, renew or reconnect the Google Cloud connection, then test image access again."
               : imageConnectionReadiness === "unsupported"
-                ? "This connection mode does not support images. Choose a connection mode with image access."
-                : "Image access failed its last test. Open Connections, correct the issue, then test image access again."
-          )}
+                ? "This connection mode does not support images. Configure a connection mode with image access in Settings > App."
+                : "Image access failed its last test. Open Settings > App, correct the issue, then test image access again.")}
         </p>
       ) : null}
       {/* Direction & Prompt Synthesis Tokens */}
@@ -374,31 +493,51 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
           <span>Synthesized in prompt</span>
         </div>
         <div className="flex flex-wrap gap-1">
-          <span className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground" title="Shot framing scale">
+          <span
+            className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground"
+            title="Shot framing scale"
+          >
             Framing: {coverageLabel(shot)}
           </span>
-          <span className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground" title="Camera angle">
+          <span
+            className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground"
+            title="Camera angle"
+          >
             Angle: {shot.camera}
           </span>
           {shot.movement && shot.movement !== "static" ? (
-            <span className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground" title="Camera movement">
+            <span
+              className="inline-flex items-center rounded bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground"
+              title="Camera movement"
+            >
               Move: {shot.movement}
             </span>
           ) : null}
           {shot.characters?.length ? (
-            <span className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="Blocking cast">
+            <span
+              className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+              title="Blocking cast"
+            >
               Cast: {shot.characters.join(", ")}
             </span>
           ) : null}
           {shot.lighting ? (
-            <span className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400" title="Lighting ambience">
+            <span
+              className="inline-flex items-center rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+              title="Lighting ambience"
+            >
               Light: {shot.lighting}
             </span>
           ) : null}
         </div>
       </div>
 
-      <KeyFrameGuidance projectId={project.id} shot={shot} mode="frame" disabled={!!busy || !!recoveryState.record || !!recoveryState.error} />
+      <KeyFrameGuidance
+        projectId={project.id}
+        shot={shot}
+        mode="frame"
+        disabled={!!busy || !!recoveryState.record || !!recoveryState.error}
+      />
       <Input
         value={direction}
         onChange={(event) => setDirection(event.target.value)}
@@ -410,7 +549,9 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
         <div role="alert" className="space-y-1 rounded-md border border-destructive/40 p-2 text-xs">
           <p className="font-medium">Stage setup is not ready for visual generation.</p>
           <ul className="list-disc space-y-0.5 pl-4">
-            {stageGate.issues.map((item) => <li key={item.code}>{item.message}</li>)}
+            {stageGate.issues.map((item) => (
+              <li key={item.code}>{item.message}</li>
+            ))}
           </ul>
         </div>
       ) : null}
@@ -418,41 +559,81 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
         <Button
           size="sm"
           variant="outline"
-          disabled={!!busy || !!recoveryState.record || !!recoveryState.error || !stageGate.ready || compositionPreview || !hasFrameComposition(shot)}
+          disabled={
+            !!busy ||
+            !!recoveryState.record ||
+            !!recoveryState.error ||
+            !stageGate.ready ||
+            compositionPreview ||
+            !hasFrameComposition(shot)
+          }
           onClick={() => void capturePlan()}
         >
           {busy === "capture-plan" ? <Loader2 className="animate-spin" /> : <ImageIcon />}
           Capture current plan
         </Button>
-        <p className="text-xs text-muted-foreground">Free local capture: the current figures and direction marks are rendered on paper without using or changing the selected still.</p>
+        <p className="text-xs text-muted-foreground">
+          Free local capture: the current figures and direction marks are rendered on paper without
+          using or changing the selected still.
+        </p>
         {planGuide ? (
           <div className="space-y-2">
-            <img src={planGuide.dataUrl} alt="Captured Frame plan for overhead review" className="aspect-video w-full rounded-sm border border-border object-contain" />
+            <img
+              src={planGuide.dataUrl}
+              alt="Captured Frame plan for overhead review"
+              className="aspect-video w-full rounded-sm border border-border object-contain"
+            />
             <label className="flex items-start gap-2 text-xs leading-relaxed">
               <input
                 type="checkbox"
                 className="mt-0.5"
                 checked={capturedLayersCurrent && overheadReview === planFingerprint}
-                disabled={!capturedLayersCurrent || planGuide.sourceFingerprint !== JSON.stringify(project) || !!busy}
-                onChange={(event) => setOverheadReview(event.target.checked ? planFingerprint : null)}
+                disabled={
+                  !capturedLayersCurrent ||
+                  planGuide.sourceFingerprint !== JSON.stringify(project) ||
+                  !!busy
+                }
+                onChange={(event) =>
+                  setOverheadReview(event.target.checked ? planFingerprint : null)
+                }
               />
-              I compared this captured Frame plan with the source overhead and confirm the room, cast sides, camera, eyelines, hands, and props are correctly placed.
+              I compared this captured Frame plan with the source overhead and confirm the room,
+              cast sides, camera, eyelines, hands, and props are correctly placed.
             </label>
           </div>
         ) : null}
-        {planGuide && !planGate.ready ? <p className="text-xs text-destructive" role="status">{formatGateIssues(planGate)}</p> : null}
+        {planGuide && !planGate.ready ? (
+          <p className="text-xs text-destructive" role="status">
+            {formatGateIssues(planGate)}
+          </p>
+        ) : null}
+        {storyboardCredits || photorealCredits ? (
+          <p className="text-[11px] text-muted-foreground">
+            {storyboardOut || photorealOut
+              ? "Monthly image credit limit reached — contact Kyle to raise it."
+              : `${photorealCredits?.remaining ?? 0} photoreal · ${storyboardCredits?.remaining ?? 0} storyboard credits left this month.`}
+          </p>
+        ) : null}
         <Button
           size="sm"
           variant="secondary"
-          disabled={!canRun || !planGate.ready || !planGuide}
+          disabled={!canRun || !planGate.ready || !planGuide || storyboardOut}
           className="justify-start gap-2 h-9 px-3"
-          onClick={() => void run("board", () => generateShotFrame(shot.id, "storyboard", {
-            ...options,
-            frameGuide: planGuide!,
-            overheadReviewFingerprint: overheadReview,
-          }))}
+          onClick={() =>
+            void run("board", () =>
+              generateShotFrame(shot.id, "storyboard", {
+                ...options,
+                frameGuide: planGuide!,
+                overheadReviewFingerprint: overheadReview,
+              }),
+            )
+          }
         >
-          {busy === "board" ? <Loader2 className="animate-spin" /> : <ImageIcon className="size-4 shrink-0" />}
+          {busy === "board" ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <ImageIcon className="size-4 shrink-0" />
+          )}
           <div className="flex flex-col text-left leading-none">
             <span className="text-xs font-semibold">Draft Storyboard</span>
             <span className="text-[10px] text-muted-foreground">Marker / Graphite</span>
@@ -466,31 +647,53 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
             className="mt-0.5"
             checked={placementReview === placementFingerprint}
             disabled={!!busy}
-            onChange={(event) => setPlacementReview(event.target.checked ? placementFingerprint : null)}
+            onChange={(event) =>
+              setPlacementReview(event.target.checked ? placementFingerprint : null)
+            }
           />
-          I reviewed this selected storyboard against the overhead and approve its placement as the source for the photoreal still.
+          I reviewed this selected storyboard against the overhead and approve its placement as the
+          source for the photoreal still.
         </label>
       ) : null}
       <div className={compact ? "flex flex-col gap-1.5" : "grid grid-cols-1 gap-2 sm:grid-cols-2"}>
         <Button
           size="sm"
           variant="secondary"
-          disabled={!canRun || !stillGate.ready}
+          disabled={!canRun || !stillReady || photorealOut}
           className="justify-start gap-2 h-9 px-3"
-          onClick={() => void run("still", () => generateShotFrame(shot.id, "still", {
-            ...options,
-            placementReviewFingerprint: placementReview,
-          }))}
+          onClick={() =>
+            void run("still", () =>
+              generateShotFrame(shot.id, "still", {
+                ...options,
+                ...(planOnlyStillGate?.ready
+                  ? { frameGuide: planGuide!, overheadReviewFingerprint: overheadReview }
+                  : { placementReviewFingerprint: placementReview }),
+              }),
+            )
+          }
         >
-          {busy === "still" ? <Loader2 className="animate-spin" /> : <Sparkles className="size-4 shrink-0 text-amber-500" />}
+          {busy === "still" ? (
+            <Loader2 className="animate-spin" />
+          ) : (
+            <Sparkles className="size-4 shrink-0 text-amber-500" />
+          )}
           <div className="flex flex-col text-left leading-none">
             <span className="text-xs font-semibold">Photoreal Keyframe</span>
             <span className="text-[10px] text-muted-foreground">Cinematic Anamorphic</span>
           </div>
         </Button>
       </div>
-      {!selectedStoryboard ? <p className="text-xs text-muted-foreground">Select a generated storyboard in Frame history before creating a photoreal keyframe.</p> : null}
-      {selectedStoryboard && !stillGate.ready ? <p className="text-xs text-destructive" role="status">{formatGateIssues(stillGate)}</p> : null}
+      {!selectedStoryboard && !planOnlyStillGate?.ready ? (
+        <p className="text-xs text-muted-foreground">
+          Select a generated storyboard in Frame history or capture and approve this Frame plan
+          before creating a photoreal keyframe.
+        </p>
+      ) : null}
+      {selectedStoryboard && !stillGate.ready ? (
+        <p className="text-xs text-destructive" role="status">
+          {formatGateIssues(stillGate)}
+        </p>
+      ) : null}
       <div className="flex flex-wrap gap-1.5">
         <Button
           size="sm"
@@ -505,10 +708,14 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
           size="sm"
           variant="outline"
           disabled={!canRun || !canEdit || !imageGate.ready || !direction.trim()}
-          onClick={() => void run("restyle", () => restyleShotFrame(shot.id, direction, {
-            ...options,
-            imageReviewFingerprint: imageReview,
-          }))}
+          onClick={() =>
+            void run("restyle", () =>
+              restyleShotFrame(shot.id, direction, {
+                ...options,
+                imageReviewFingerprint: imageReview,
+              }),
+            )
+          }
         >
           {busy === "restyle" ? <Loader2 className="animate-spin" /> : <Wand2 />}Edit current frame
         </Button>
@@ -517,10 +724,14 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
             size="sm"
             variant="outline"
             disabled={!canRun || !canReferencePrevious || !previousImageGate?.ready}
-            onClick={() => void run("continue", () => continueFromPrevious(shot.id, {
-              ...options,
-              imageReviewFingerprint: imageReview,
-            }))}
+            onClick={() =>
+              void run("continue", () =>
+                continueFromPrevious(shot.id, {
+                  ...options,
+                  imageReviewFingerprint: imageReview,
+                }),
+              )
+            }
           >
             {busy === "continue" ? <Loader2 className="animate-spin" /> : null}
             Use previous reference
@@ -534,7 +745,9 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
             className="mt-0.5"
             checked={imageReview === imageReviewFingerprint}
             disabled={!!busy}
-            onChange={(event) => setImageReview(event.target.checked ? imageReviewFingerprint : null)}
+            onChange={(event) =>
+              setImageReview(event.target.checked ? imageReviewFingerprint : null)
+            }
           />
           I reviewed this exact current still and Stage setup as the source for a paid image edit.
         </label>
@@ -546,13 +759,18 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
             className="mt-0.5"
             checked={imageReview === previousReviewFingerprint}
             disabled={!!busy}
-            onChange={(event) => setImageReview(event.target.checked ? previousReviewFingerprint : null)}
+            onChange={(event) =>
+              setImageReview(event.target.checked ? previousReviewFingerprint : null)
+            }
           />
-          I reviewed the exact previous still and this current Stage setup as the source for a paid continuation.
+          I reviewed the exact previous still and this current Stage setup as the source for a paid
+          continuation.
         </label>
       ) : null}
       <p className="text-xs text-muted-foreground">
-        Capture and approve the authored plan before storyboard generation. Photoreal generation then uses the selected, placement-reviewed storyboard as its one image reference.
+        Capture and approve the authored plan before storyboard generation. You may generate the
+        photoreal first frame directly from that approved plan, or use a selected,
+        placement-reviewed storyboard as its sole image reference.
       </p>
       <input
         ref={fileRef}
@@ -581,16 +799,24 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
           <span className="block">Frame history · {shot.frameHistory.length} versions</span>
           <p>Active review frame: {shot.frameUrl ? shot.frameKind : "none selected"}.</p>
           <details>
-            <summary className="cursor-pointer">Historical candidates · not in the active review queue</summary>
+            <summary className="cursor-pointer">
+              Historical candidates · not in the active review queue
+            </summary>
             <ul className="mt-1 list-disc space-y-0.5 pl-4">
-              {shot.frameHistory.filter((version) => version.url !== shot.frameUrl).map((version, index) => (
-                <li key={version.id}>
-                  {index + 1} · {version.kind} · {version.asset
-                    ? String(version.asset.provenance.model ?? "Generated")
-                    : "Attached"} · historical only
-                </li>
-              ))}
-              {!shot.frameHistory.some((version) => version.url !== shot.frameUrl) ? <li>None</li> : null}
+              {shot.frameHistory
+                .filter((version) => version.url !== shot.frameUrl)
+                .map((version, index) => (
+                  <li key={version.id}>
+                    {index + 1} · {version.kind} ·{" "}
+                    {version.asset
+                      ? String(version.asset.provenance.model ?? "Generated")
+                      : "Attached"}{" "}
+                    · historical only
+                  </li>
+                ))}
+              {!shot.frameHistory.some((version) => version.url !== shot.frameUrl) ? (
+                <li>None</li>
+              ) : null}
             </ul>
           </details>
         </div>
@@ -619,7 +845,12 @@ export function ImagineActions({ shot, compact = false, compositionPreview = fal
         </p>
       ) : null}
       <div className="border-t border-border pt-2">
-        <Button className="w-full" size="sm" variant="secondary" onClick={() => useSlate.getState().setView("edit")}>
+        <Button
+          className="w-full"
+          size="sm"
+          variant="secondary"
+          onClick={() => useSlate.getState().setView("edit")}
+        >
           <Film />
           Open video & music tools
         </Button>
@@ -637,7 +868,9 @@ export function FrameStudio({ shot }: { shot: Shot }) {
   const [placeFigureId, setPlaceFigureId] = useState<string | null>(null);
   const setSketch = useSlate((state) => state.setSketch);
   const setAnnotations = useSlate((state) => state.setAnnotations);
-  const cast = (shot.blocking?.figures ?? []).filter((figure) => shot.characters?.includes(figure.name));
+  const cast = (shot.blocking?.figures ?? []).filter((figure) =>
+    shot.characters?.includes(figure.name),
+  );
 
   useEffect(() => {
     setSelectedFigureId(null);
@@ -710,23 +943,27 @@ export function FrameStudio({ shot }: { shot: Shot }) {
         <div className="rounded-md border border-amber-500/40 bg-amber-500/5 p-2 text-xs">
           <p className="font-medium">Frame items needing review</p>
           <ul className="mt-1 space-y-1">
-            {shot.sketch.stamps.filter((stamp) => !stamp.figureId).map((stamp) => (
-              <li key={stamp.id} className="flex items-center justify-between gap-2">
-                <span>{stamp.label?.trim() || `${stamp.kind} stamp ${stamp.id}`}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={`Remove frame item ${stamp.id}`}
-                  onClick={() => setSketch(shot.id, {
-                    ...shot.sketch,
-                    stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
-                  })}
-                >
-                  Remove
-                </Button>
-              </li>
-            ))}
+            {shot.sketch.stamps
+              .filter((stamp) => !stamp.figureId)
+              .map((stamp) => (
+                <li key={stamp.id} className="flex items-center justify-between gap-2">
+                  <span>{stamp.label?.trim() || `${stamp.kind} stamp ${stamp.id}`}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    aria-label={`Remove frame item ${stamp.id}`}
+                    onClick={() =>
+                      setSketch(shot.id, {
+                        ...shot.sketch,
+                        stamps: shot.sketch.stamps.filter((candidate) => candidate.id !== stamp.id),
+                      })
+                    }
+                  >
+                    Remove
+                  </Button>
+                </li>
+              ))}
           </ul>
         </div>
       ) : null}

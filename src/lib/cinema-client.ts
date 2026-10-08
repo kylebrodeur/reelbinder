@@ -1,5 +1,5 @@
 /** Browser contract for the same-origin cinema service. Keys never enter Project state. */
-export type ConnectionMode = "express" | "standard" | "gemini";
+export type ConnectionMode = "express" | "operator" | "standard";
 
 export const CINEMA_JOB_KINDS = ["script", "preflight", "image", "video", "music", "render"] as const;
 export type CinemaJobKind = typeof CINEMA_JOB_KINDS[number];
@@ -27,6 +27,11 @@ export interface CinemaJobRequest {
   expectedRevision?: number;
   idempotencyKey: string;
   input: Record<string, unknown>;
+  /**
+   * /assistant/chat only: top-level bounded context refs. Attached alongside
+   * the same refs inside `input` so a stored pending replays them.
+   */
+  contextRefs?: string[];
 }
 
 export class CinemaJobFailure extends Error {
@@ -67,7 +72,49 @@ export interface CinemaJobUsageCounts {
 export interface CinemaJobUsage {
   jobs: CinemaJobUsageCounts;
   admission: { pending: number; pendingLimit: number };
+  generationCredits: GenerationCredits | null;
 }
+
+export type GenerationCreditKind =
+  | "photoreal"
+  | "storyboard"
+  | "video"
+  | "music"
+  | "assistant"
+  | "parallel";
+
+export interface GenerationCreditCount {
+  used: number;
+  limit: number;
+  remaining: number;
+}
+
+interface AdminGenerationCreditCount {
+  used: number;
+  limit: null;
+  remaining: null;
+}
+
+export type GenerationCredits =
+  | {
+      month: string;
+      admin: false;
+      byType: Record<GenerationCreditKind, GenerationCreditCount>;
+    }
+  | {
+      month: string;
+      admin: true;
+      byType: Record<GenerationCreditKind, AdminGenerationCreditCount>;
+    };
+
+const GENERATION_CREDIT_KINDS: readonly GenerationCreditKind[] = [
+  "photoreal",
+  "storyboard",
+  "video",
+  "music",
+  "assistant",
+  "parallel",
+];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -80,6 +127,43 @@ function isNonNegativeInteger(value: unknown): value is number {
 function nonNegativeInteger(value: unknown, name: string): number {
   if (!isNonNegativeInteger(value)) throw new Error(`Cinema job usage ${name} is missing or invalid.`);
   return value;
+}
+
+function parseGenerationCredits(value: unknown): GenerationCredits | null {
+  if (value === null || value === undefined) return null;
+  if (!isPlainObject(value)) throw new Error("Cinema job usage generationCredits is not an object.");
+  const month = value.month;
+  if (typeof month !== "string" || !month)
+    throw new Error("Cinema job usage generationCredits month is missing or invalid.");
+  const admin = value.admin === true;
+  const byTypeRaw = isPlainObject(value.byType) ? value.byType : {};
+  if (admin) {
+    const byType = Object.fromEntries(
+      GENERATION_CREDIT_KINDS.map((kind) => {
+        const item = byTypeRaw[kind];
+        if (!isPlainObject(item) || item.limit !== null || item.remaining !== null)
+          throw new Error("Cinema admin generation credit count is missing or invalid.");
+        return [kind, { used: nonNegativeInteger(item.used, "used count"), limit: null, remaining: null }];
+      }),
+    ) as Record<GenerationCreditKind, AdminGenerationCreditCount>;
+    return { month, admin: true, byType };
+  }
+  const byType = Object.fromEntries(
+    GENERATION_CREDIT_KINDS.map((kind) => {
+      const item = byTypeRaw[kind];
+      if (!isPlainObject(item))
+        throw new Error("Cinema job usage generation credit count is not an object.");
+      return [
+        kind,
+        {
+          used: nonNegativeInteger(item.used, "used count"),
+          limit: nonNegativeInteger(item.limit, "limit"),
+          remaining: nonNegativeInteger(item.remaining, "remaining count"),
+        },
+      ];
+    }),
+  ) as Record<GenerationCreditKind, GenerationCreditCount>;
+  return { month, admin: false, byType };
 }
 
 export function parseCinemaJobUsage(value: unknown): CinemaJobUsage {
@@ -109,9 +193,12 @@ export function parseCinemaJobUsage(value: unknown): CinemaJobUsage {
   const pending = nonNegativeInteger(admission.pending, "pending count");
   const pendingLimit = nonNegativeInteger(admission.pendingLimit, "pending limit");
 
+  const generationCredits = parseGenerationCredits(value.generationCredits);
+
   return {
     jobs: { total, queued, running, succeeded, failed, byKind },
     admission: { pending, pendingLimit },
+    generationCredits,
   };
 }
 
@@ -120,12 +207,15 @@ export async function getCinemaJobUsage(): Promise<CinemaJobUsage> {
   return parseCinemaJobUsage(raw);
 }
 
-export async function cinemaRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
+export async function cinemaRequest<T>(path: string, options: RequestInit & { timeoutMs?: number } = {}): Promise<T> {
+  // Ask-adjacent long calls pass explicit timeouts; the 20s default covers the
+  // fast reads and submissions the gateway and edge bounds comfortably.
+  const { timeoutMs = 20_000, ...fetchOptions } = options;
   const response = await fetch(`/api/cinema${path}`, {
-    ...options,
+    ...fetchOptions,
     credentials: "include",
-    headers: { "Content-Type": "application/json", ...options.headers },
-    signal: options.signal ?? AbortSignal.timeout(20_000),
+    headers: { "Content-Type": "application/json", ...fetchOptions.headers },
+    signal: fetchOptions.signal ?? AbortSignal.timeout(timeoutMs),
   }).catch(() => {
     throw new Error("Cinema service is unavailable. Try again when the connection is restored.");
   });
@@ -200,7 +290,8 @@ export async function waitForCinemaJob<T>(jobId: string): Promise<T> {
 export interface ConnectionProbeResult {
   tool: "script" | "image" | "video" | "music";
   model: string;
-  status: "verified" | "failed";
+  /** "verified" or "failed" prove access; "inconclusive" means the model route returned 404, so the location could not confirm the model. */
+  status: "verified" | "failed" | "inconclusive";
   code: string;
   message: string;
 }
@@ -253,9 +344,87 @@ export function imageGenerationAvailable(imageModelConfigured: boolean, probe?: 
 export async function testConnection(connectionId: string): Promise<ConnectionTestResponse> {
   const result = await cinemaRequest<ConnectionTestResponse>(
     `/connections/${encodeURIComponent(connectionId)}/test`,
-    { method: "POST", body: JSON.stringify({}) },
+    // One probe may call several provider routes; the backend bounds each
+    // probe's HTTP call at 30s, giving up to ~2min worst case.
+    { method: "POST", body: JSON.stringify({}), timeoutMs: 120_000 },
   );
   connectionProbes.set(connectionId, result);
   publishConnectionProbeChange();
   return result;
 }
+
+/** One redacted reports-list row (spec: never credentials or tokens, bounded excerpts). */
+export interface CinemaReportRow {
+  id: string;
+  kind: "report" | "research";
+  projectId: string;
+  revision: number;
+  sourceRevision: number | null;
+  question: string;
+  status: "ok" | "failed";
+  error: string | null;
+  createdAt: number;
+  answerExcerpt: string;
+  findingsCount: number;
+  sourcesCount: number;
+}
+
+function boundedText(value: unknown, name: string, max: number): string {
+  if (typeof value !== "string") throw new Error(`Cinema reports list ${name} is invalid.`);
+  return value.slice(0, max);
+}
+
+function parseCinemaReportRow(value: unknown): CinemaReportRow {
+  if (!isPlainObject(value)) throw new Error("Cinema returned an unreadable reports row.");
+  const id = boundedText(value.id, "id", 200);
+  if (!id.trim()) throw new Error("Cinema returned an unreadable reports row.");
+  const kind = value.kind;
+  if (kind !== "report" && kind !== "research")
+    throw new Error("Cinema returned an unreadable reports kind.");
+  const status = value.status;
+  if (status !== "ok" && status !== "failed")
+    throw new Error("Cinema returned an unreadable reports status.");
+  const revision = value.revision;
+  const sourceRevision = value.sourceRevision;
+  const createdAt = value.createdAt;
+  if (
+    typeof revision !== "number" ||
+    !Number.isFinite(revision) ||
+    !(sourceRevision === null || (typeof sourceRevision === "number" && Number.isFinite(sourceRevision))) ||
+    typeof createdAt !== "number" ||
+    !Number.isFinite(createdAt)
+  )
+    throw new Error("Cinema returned an unreadable reports row.");
+  return {
+    id,
+    kind,
+    projectId: boundedText(value.projectId, "projectId", 200),
+    revision,
+    sourceRevision: typeof sourceRevision === "number" ? sourceRevision : null,
+    question: boundedText(value.question, "question", 160),
+    status,
+    error: typeof value.error === "string" ? value.error.slice(0, 200) : null,
+    createdAt,
+    answerExcerpt: boundedText(value.answerExcerpt, "answerExcerpt", 200),
+    findingsCount:
+      typeof value.findingsCount === "number" && Number.isFinite(value.findingsCount) && value.findingsCount >= 0
+        ? value.findingsCount
+        : 0,
+    sourcesCount:
+      typeof value.sourcesCount === "number" && Number.isFinite(value.sourcesCount) && value.sourcesCount >= 0
+        ? value.sourcesCount
+        : 0,
+  };
+}
+
+/** Newest-first, this-session-only reports summary for the Activity "Reports" section. */
+export async function getReports(projectId: string, limit = 50): Promise<CinemaReportRow[]> {
+  const bounded = Math.max(1, Math.min(100, Math.floor(limit)));
+  const value = await cinemaRequest<{ reports?: unknown }>(
+    `/reports?projectId=${encodeURIComponent(projectId)}&limit=${bounded}`,
+  );
+  if (!isPlainObject(value) || !Array.isArray(value.reports))
+    throw new Error("Cinema returned an unreadable reports list.");
+  return value.reports.map(parseCinemaReportRow);
+}
+

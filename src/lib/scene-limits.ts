@@ -1,5 +1,5 @@
 /** Capacity of an assembled scene, independent of a provider's short take length.
- * The hosted Cinema service mirrors this contract.
+ * backend/cinema/limits.py mirrors this contract; a cross-language test checks it.
  */
 export const MAX_SCENE_SECONDS = 300;
 export const MAX_PICTURE_CLIPS = 128;

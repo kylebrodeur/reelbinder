@@ -241,8 +241,9 @@ export function ScriptCommentThreadCard({ thread }: { thread: ScriptCommentThrea
             ))}
             {message.source && (
               <p className="break-all text-[10px] text-muted-foreground">
-                Saved review {message.source.jobId}
-                {message.source.findingId ? ` · finding ${message.source.findingId}` : ""}
+                {message.source.findingId
+                  ? `Assistant finding ${message.source.findingId}`
+                  : "Assistant answer"}
               </p>
             )}
           </div>
@@ -287,7 +288,7 @@ export function ScriptCommentThreadCard({ thread }: { thread: ScriptCommentThrea
             onClick={() => prepareAssistantComment(project.id, thread.id)}
           >
             <MessageSquare />
-            Ask assistant
+            Ask the assistant
           </Button>
           <Button
             size="sm"

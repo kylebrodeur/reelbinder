@@ -83,20 +83,38 @@ export function SidebarDock<T extends string = string>({
         className,
       )}
     >
-      {/* Dock Header */}
+      {/* Dock Header: title/close row, then a full-width legible tab row */}
       <div
         className={cn(
-          "flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 py-1.5",
+          "flex shrink-0 flex-col gap-1 border-b border-border bg-background px-3 py-1.5",
           headerClassName,
         )}
       >
-        <div className="flex min-w-0 items-center gap-2">
-          {title && <div className="truncate text-xs font-semibold text-foreground">{title}</div>}
-          <div
-            className="flex items-center gap-1 rounded-md bg-secondary/80 p-0.5 overflow-x-auto no-scrollbar"
-            role="tablist"
-            aria-label={tablistAriaLabel}
-          >
+        {(title || headerActions || onClose) && (
+          <div className="flex items-center justify-between gap-2">
+            {title && <div className="truncate text-xs font-semibold text-foreground">{title}</div>}
+            <div className="flex items-center gap-1">
+              {headerActions}
+              {onClose && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-7 text-muted-foreground hover:text-foreground shrink-0"
+                  onClick={onClose}
+                  aria-label={closeAriaLabel}
+                  title={closeAriaLabel}
+                >
+                  {collapseIcon ?? <PanelRightClose className="size-3.5" />}
+                </Button>
+              )}
+            </div>
+          </div>
+        )}
+        <div
+          className="flex w-full min-w-0 items-center gap-1 rounded-md bg-secondary/80 p-0.5 overflow-x-auto no-scrollbar"
+          role="tablist"
+          aria-label={tablistAriaLabel}
+        >
             {tabs.map((tab) => {
               const isActive = activeTab === tab.id;
               const renderIcon = () => {
@@ -118,14 +136,14 @@ export function SidebarDock<T extends string = string>({
                   title={tab.title ?? tab.label}
                   onClick={() => onTabChange(tab.id)}
                   className={cn(
-                    "inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs font-medium transition-all shrink-0 select-none",
+                    "inline-flex h-7 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-sm px-2 text-xs sm:text-sm font-medium transition-all outline-none focus-visible:ring-1 focus-visible:ring-ring select-none",
                     isActive
                       ? "bg-card text-foreground shadow-xs font-semibold"
                       : "text-muted-foreground hover:text-foreground hover:bg-card/40",
                   )}
                 >
                   {renderIcon()}
-                  <span>{tab.label}</span>
+                  <span className="truncate">{tab.label}</span>
                   {tab.count !== undefined && tab.count !== null && (
                     <span className="ml-0.5 rounded-full bg-muted px-1.5 py-0.2 text-[10px] font-mono text-muted-foreground">
                       {tab.count}
@@ -143,30 +161,13 @@ export function SidebarDock<T extends string = string>({
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-1">
-          {headerActions}
-          {onClose && (
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              className="size-7 text-muted-foreground hover:text-foreground shrink-0"
-              onClick={onClose}
-              aria-label={closeAriaLabel}
-              title={closeAriaLabel}
-            >
-              {collapseIcon ?? <PanelRightClose className="size-3.5" />}
-            </Button>
-          )}
         </div>
       </div>
 
       {/* Dock Content Panel */}
       <div
         className={cn(
-          "min-h-0 flex-1 overflow-hidden [&>aside]:border-0 [&>aside]:w-full [&>aside]:h-full [&>aside]:shadow-none [&>aside]:overflow-y-auto",
+          "flex min-h-0 flex-1 flex-col overflow-hidden [&>aside]:border-0 [&>aside]:w-full [&>aside]:h-full [&>aside]:shadow-none [&>aside]:overflow-y-auto",
           contentClassName,
         )}
       >

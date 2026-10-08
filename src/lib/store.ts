@@ -21,6 +21,7 @@ import { documentsToProject, isSlateText } from "./slate-md";
 import type {
   Annotation,
   ContinuityIssue,
+  EditTimeline,
   FloorPlan,
   FrameKind,
   Project,
@@ -40,7 +41,7 @@ import { eventsFromAnnotations, hydrateWorld, syncCoreEvents } from "./world";
 import { applyProductionMerge, editProductionItem, reconcileProductionCatalog, setProductionOverride, type ProductionMergeReview } from "./production-catalog";
 import type { ProductionScope } from "./types";
 import { applyScriptCommentChange, type ScriptCommentChange } from "./script-comments";
-import { applyPublicDemoMediaPolicy } from "./demo-media-provenance";
+import { retirePreHackathonDemoMedia } from "./demo-media-provenance";
 
 interface SlateState {
   hydrated: boolean;
@@ -67,6 +68,7 @@ interface SlateState {
   newBoard: (partial?: Partial<Project>) => void;
   replaceProject: (project: Project) => void;
   patchProject: (partial: Partial<Project>) => void;
+  syncTimeline: (timeline: EditTimeline) => void;
   patchWorld: (partial: Partial<WorldLock>) => void;
   patchFloor: (partial: Partial<FloorPlan>) => void;
   setBlocking: (shotId: string, blocking: ShotBlocking, opts?: { syncSketch?: boolean }) => void;
@@ -89,6 +91,7 @@ interface SlateState {
   setSketch: (id: string, sketch: SketchData) => void;
   setAnnotations: (id: string, annotations: Annotation[]) => void;
   setFrame: (id: string, url: string | null, kind?: FrameKind) => void;
+  setFrameWithHistory: (id: string, url: string | null, kind: FrameKind, frameHistory: NonNullable<Shot["frameHistory"]>) => void;
   setVideo: (
     id: string,
     partial: {
@@ -109,13 +112,13 @@ function checkContinuity(project: Project): ContinuityIssue[] {
 }
 
 function withPrompts(project: Project, previousProject?: Project): Project {
-  project = applyPublicDemoMediaPolicy(project);
+  project = retirePreHackathonDemoMedia(project);
   const linked = refreshLinkedNarratives(synchronizeProductionDirections(project), undefined, previousProject);
   return refreshProjectPrompts(reconcileProductionCatalog(linked), previousProject);
 }
 
 function restoreLinkedProject(project: Project): Project {
-  project = applyPublicDemoMediaPolicy(project);
+  project = retirePreHackathonDemoMedia(project);
   // Loading is not permission to regenerate saved narrative or model-tuning artifacts.
   // Unmarked differences are preserved and surfaced by preservedFieldIssues.
   return reconcileProductionCatalog(synchronizeProductionDirections(project));
@@ -167,7 +170,7 @@ function placeGroup(script: ScriptElement[], ids: string[], toIndex: number): Sc
 }
 
 function applyProject(project: Project, view: View = "script"): Partial<SlateState> {
-  project = applyPublicDemoMediaPolicy(project);
+  project = retirePreHackathonDemoMedia(project);
   project = reconcileProductionCatalog(synchronizeProductionDirections(project));
   const selectedElementId =
     project.script.find((e) => e.kind === "action")?.id ?? project.script[0]?.id ?? null;
@@ -314,6 +317,11 @@ export const useSlate = create<SlateState>()(
             partial.world !== undefined || partial.script !== undefined || partial.shots !== undefined;
           const next = refresh ? withPrompts(project, s.project) : { ...project, updatedAt: Date.now() };
           return { project: next, issues: checkContinuity(next) };
+        }),
+      syncTimeline: (timeline) =>
+        set((s) => {
+          const next = { ...s.project, timeline, updatedAt: Date.now() };
+          return stamp(next, "Sync shot timeline", s.project);
         }),
       patchWorld: (partial) =>
         set((s) => {
@@ -684,6 +692,13 @@ export const useSlate = create<SlateState>()(
           );
           return { project: { ...s.project, shots, updatedAt: Date.now() } };
         }),
+      setFrameWithHistory: (id, url, kind, frameHistory) =>
+        set((s) => {
+          const shots = s.project.shots.map((shot) =>
+            shot.id === id ? { ...shot, frameUrl: url, frameKind: kind, frameHistory } : shot,
+          );
+          return stamp({ ...s.project, shots }, "Import still", s.project);
+        }),
       recheck: () => set((s) => ({ issues: checkContinuity(s.project) })),
     }),
     {
@@ -779,7 +794,7 @@ bindHistory({
     };
   },
   put: (snap) => {
-    const project = applyPublicDemoMediaPolicy(snap.project);
+    const project = retirePreHackathonDemoMedia(snap.project);
     useSlate.setState({
       project,
       selectedId: snap.selectedId,

@@ -8,6 +8,28 @@ corresponds to a public deploy of the app or docs.
 [docs-site changelog page](https://reelbinder.app/changelog) is generated from
 it by `scripts/gen-changelog-docs.mjs` — edit this file, never the generated page.
 
+## [2026-10-08] Locked final cut finished study
+
+### Changed
+- The New Film dialog's **Open finished presentation Project** now ships the
+  Bounty Hunter **locked final cut** (Premiere sequence FINAL BH CUT,
+  2026-10-08; nothing in Premiere was changed to build this). The media-light
+  archive opens with the screenplay, planning, floor plan and a 17-clip
+  picture timeline matching the locked cut; the mixed soundtrack (Western
+  theme, Rusty voice-over, diegetic takes) and the opening title cards are
+  baked into the film render.
+- The film media publishes at
+  `https://storage.googleapis.com/reelbinder-public-downloads/final/2026-10-08/the-bounty-hunter-final-cut.mp4`
+  with a pinned SHA-256 and byte size in
+  `public/demo/finished-manifest.json`, and downloads only after the visitor
+  explicitly chooses **Download media and relink** in Render.
+
+### Fixed
+- Finished-study hydration could never link multi-megabyte approved media:
+  `src/lib/finished-study-media.ts` converted the whole descriptor with one
+  base64 spread and overflowed the call stack. Byte-to-base64 conversion is
+  now chunked (0x8000 elements per spread).
+
 ## [2026-09-24] Quota remediation: retained job history no longer blocks submissions
 
 ### Changed

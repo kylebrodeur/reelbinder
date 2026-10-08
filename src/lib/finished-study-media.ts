@@ -41,6 +41,15 @@ async function checksum(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
 async function projectFingerprint(project: Project): Promise<string> {
   return checksum(new TextEncoder().encode(JSON.stringify(project)));
 }
@@ -113,7 +122,8 @@ async function importVerifiedMedia(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       mimeType: descriptor.mimeType,
-      dataBase64: btoa(String.fromCharCode(...bytes)),
+      // One subarray spread at a time: a single spread of multi-megabyte media overflows the call stack.
+      dataBase64: bytesToBase64(bytes),
       sha256: descriptor.sha256,
       provenance,
     }),

@@ -157,9 +157,9 @@ export const usePreflight = create<PreflightState>((set, get) => ({
         throw new Error(
           "Add a Google Cloud connection using the Connections button, then refresh connections here.",
         );
-      if (research && !configured(parallelConnectionId, "parallel"))
+      if (research && parallelConnectionId && !configured(parallelConnectionId, "parallel"))
         throw new Error(
-          "Parallel research requires a Parallel connection. Add it using Connections.",
+          "Your selected Parallel connection is unavailable. Reconnect it or use the managed research capacity.",
         );
       const saved = await cinemaRequest<{ projectId: string; revision: number }>("/projects", {
         method: "POST",
@@ -177,7 +177,7 @@ export const usePreflight = create<PreflightState>((set, get) => ({
         {
           kind: "preflight",
           connectionId,
-          ...(research ? { parallelConnectionId } : {}),
+          ...(research && parallelConnectionId ? { parallelConnectionId } : {}),
           projectId: saved.projectId,
           expectedRevision: saved.revision,
           idempotencyKey: crypto.randomUUID(),

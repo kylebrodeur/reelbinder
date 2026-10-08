@@ -7,6 +7,56 @@ const APP_URL = "https://reelbinder.app/";
 const APP_IMAGE = `${APP_URL}og.png`;
 const APP_IMAGE_ALT = "ReelBinder logo and layered film-frame motif with the words From screenplay to cut.";
 
+/**
+ * Critical inline CSS: the first paint must match the app theme before the
+ * (slow on drvfs) styles.css resolves — exact tokens copied from
+ * src/styles.css (@theme background/foreground/primary/muted-foreground).
+ * #boot-splash paints instantly and is hidden once the app sets
+ * data-app-ready="1"; a 15s no-module fallback removes it so a failed
+ * hydration can never trap a blank screen.
+ */
+const BOOT_CRITICAL_CSS = `
+html, body { background: #0D0E11; color: #F1F0EA; }
+html { font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+#boot-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #0D0E11;
+  color: #F1F0EA;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+#boot-splash .boot-wordmark {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #E8E6DE;
+}
+#boot-splash .boot-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #A9AFBA;
+}
+#boot-splash .boot-spinner {
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+  border: 2px solid rgb(232 230 222 / 0.25);
+  border-top-color: #E8E6DE;
+  animation: boot-spin 0.8s linear infinite;
+}
+@keyframes boot-spin { to { transform: rotate(360deg); } }
+html[data-app-ready="1"] #boot-splash { display: none; }
+`;
+
+/** No-module, no-network safety valve: untrap the splash at worst 15s after shell paint. */
+const BOOT_FALLBACK_SCRIPT = `(function(){try{setTimeout(function(){document.documentElement.dataset.appReady="1";var s=document.getElementById("boot-splash");if(s)s.remove();},15000);}catch(e){}})();`;
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
@@ -53,10 +103,19 @@ export const Route = createRootRoute({
     <html lang="en" className="antialiased" suppressHydrationWarning>
       <head>
         <HeadContent />
+        {/* Critical paint CSS ships inline so the first frame is already themed
+            even while the stylesheet link itself is still resolving. */}
+        <style dangerouslySetInnerHTML={{ __html: BOOT_CRITICAL_CSS }} />
       </head>
       <body className="bg-background text-foreground" suppressHydrationWarning>
+        <div id="boot-splash" role="status" aria-label="Loading ReelBinder" suppressHydrationWarning>
+          <div className="boot-wordmark">ReelBinder</div>
+          <div className="boot-spinner" aria-hidden="true" />
+          <p className="boot-hint">From screenplay to cut.</p>
+        </div>
         <Outlet />
         <Scripts />
+        <script dangerouslySetInnerHTML={{ __html: BOOT_FALLBACK_SCRIPT }} />
       </body>
     </html>
   ),

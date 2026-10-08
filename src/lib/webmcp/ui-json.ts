@@ -326,7 +326,13 @@ export async function applyUiPatch(
       return { ok: false, error: `Unsupported UI action "${operation.action}".` };
     }
     if (operation.value !== undefined && typeof operation.value !== "string") {
-      return { ok: false, error: "Operation value must be a string when provided." };
+      // The Page Agent may send a numeric or boolean value for a text/number
+      // control; the patch contract is a string, so coerce JSON scalars.
+      if (typeof operation.value === "number" || typeof operation.value === "boolean") {
+        operation.value = String(operation.value);
+      } else {
+        return { ok: false, error: "Operation value must be a string, number, or boolean when provided." };
+      }
     }
     operations.push(operation as unknown as UiPatchOperation);
   }

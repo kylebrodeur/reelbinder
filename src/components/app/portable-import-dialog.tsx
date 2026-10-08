@@ -144,8 +144,23 @@ export function PortableImportDialog({ open, onOpenChange }: PortableImportDialo
       return;
     }
 
+    const attempt = createProjectOpenAttempt(
+      () => useSlate.getState().project,
+      (project) => {
+        useSlate.getState().replaceProject(project);
+      },
+    );
+    activeAttempt.current = attempt;
+
     try {
+      const snapshot = JSON.stringify(useSlate.getState().project);
       const text = await file.text();
+      attempt.signal.throwIfAborted();
+      if (JSON.stringify(useSlate.getState().project) !== snapshot) {
+        throw new Error(
+          "Your project changed while the script was opening. Open it again when you are ready to replace the current project.",
+        );
+      }
       const currentProject = useSlate.getState().project;
 
       if (file.name.endsWith(".jsonl")) {
@@ -192,8 +207,13 @@ export function PortableImportDialog({ open, onOpenChange }: PortableImportDialo
         "Supported files: .reelbinder.zip, .slate.zip, .fountain, .md, .slate.md, .jsonl, .json, or .txt",
       );
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Could not import file.");
+      if (!attempt.signal.aborted) {
+        setError(err instanceof Error ? err.message : "Could not import file.");
+      }
     } finally {
+      if (activeAttempt.current === attempt) {
+        activeAttempt.current = null;
+      }
       setBusy(false);
     }
   };

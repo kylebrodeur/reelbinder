@@ -7,7 +7,7 @@ export const MAX_AUDIO_CUES = MAX_SCENE_AUDIO_CUES;
 export const MAX_AUDIO_CUT_SECONDS = MAX_SCENE_SECONDS;
 export const MAX_WAV_SECONDS = MAX_IMPORTED_WAV_SECONDS;
 export const MAX_WAV_BYTES = MAX_IMPORTED_WAV_BYTES;
-/** Output frame rate shared with the hosted Cinema renderer. */
+/** Output frame rate shared with backend/cinema/render.py. */
 export const OUTPUT_FPS = 24;
 export const AUDIO_TRACK_LABEL = {
   voiceover: "Voice-over",
@@ -86,7 +86,7 @@ const TimelineAudioClipSchema = CinemaMediaAssetSchema.extend({
   muted: z.boolean(),
 }).passthrough();
 
-/** Frame-aligned output duration matching the hosted Cinema renderer.
+/** Frame-aligned output duration matching backend/cinema/render.py.
  *  The renderer rounds each clip boundary to the nearest frame with
  *  JavaScript-style round-half-up, then audio must fit the last frame.
  */
@@ -313,7 +313,7 @@ export function timelineAudioPosition(
   };
 }
 
-/** Matches the hosted Cinema media contract: integer PCM, 48 kHz, mono/stereo, <=300 s. */
+/** Matches backend/cinema/av_media.py: integer PCM, 48 kHz, mono/stereo, <=300 s. */
 export function validatePcmWav(bytes: Uint8Array): {
   durationSec: number;
   sampleRate: number;

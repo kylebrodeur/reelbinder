@@ -120,15 +120,9 @@ function transpileConnectionsPanel() {
         mode: "standard",
         projectId: "",
         location: "us-central1",
-        billingConfirmed: false,
-        vertexConfirmed: false,
-        ttsConfirmed: false,
-        parallelSkipped: false,
         lastError: null,
-        oauthClientId: "",
-        oauthClientSecret: "",
-        oauthStateNonce: "",
         oauthRedirectUri: "",
+        renewalConnectionId: null,
       });
       return {
         defaultSetupState,
@@ -140,10 +134,11 @@ function transpileConnectionsPanel() {
           message: err?.message || "",
           guidance: "",
         }),
-        buildGoogleOAuthUrl: () => "",
+        startGoogleOAuth: async () => ({ authorizationUrl: "https://accounts.google.com", state: "state" }),
         parseOAuthCallback: () => null,
         clearOAuthUrlParams: () => {},
-        exchangeOAuthCode: async () => ({}),
+        exchangeOAuthCode: async () => ({ accessToken: "token", expiresIn: 3600 }),
+        setupGoogleOAuth: async () => ({ project: { projectId: "film-project" }, location: "us-central1" }),
         SETUP_STORAGE_KEY: "test",
       };
     }
@@ -156,14 +151,13 @@ function transpileConnectionsPanel() {
   return exportsObj;
 }
 
+
 test("defaultSetupState returns initial step 'mode' and clean values", () => {
   const state = defaultSetupState();
   assert.equal(state.step, "mode");
   assert.equal(state.mode, "standard");
   assert.equal(state.projectId, "");
-  assert.equal(state.billingConfirmed, false);
-  assert.equal(state.vertexConfirmed, false);
-  assert.equal(state.ttsConfirmed, false);
+  assert.equal(state.location, "us-central1");
   assert.equal(state.lastError, null);
 });
 
@@ -180,41 +174,17 @@ test("loadSetupState and saveSetupState persist state in sessionStorage", () => 
   const initial = loadSetupState();
   assert.equal(initial.step, "mode");
 
-  const customState = {
-    ...defaultSetupState(),
-    step: "billing",
-    projectId: "slate-cinema-proj",
-    billingConfirmed: true,
-  };
+  const customState = { ...defaultSetupState(), step: "credentials", projectId: "slate-cinema-proj" };
   saveSetupState(customState);
 
   const restored = loadSetupState();
-  assert.equal(restored.step, "billing");
+  assert.equal(restored.step, "credentials");
   assert.equal(restored.projectId, "slate-cinema-proj");
-  assert.equal(restored.billingConfirmed, true);
 
   clearSetupState();
   assert.equal(loadSetupState().step, "mode");
 });
 
-test("loadSetupState restores gemini mode", () => {
-  const mockStorage = new Map();
-  globalThis.window = {
-    sessionStorage: {
-      getItem: (key) => mockStorage.get(key) ?? null,
-      setItem: (key, val) => mockStorage.set(key, String(val)),
-      removeItem: (key) => mockStorage.delete(key),
-    },
-  };
-
-  const geminiState = { ...defaultSetupState(), mode: "gemini", step: "credentials" };
-  saveSetupState(geminiState);
-  const restored = loadSetupState();
-  assert.equal(restored.mode, "gemini");
-  assert.equal(restored.step, "credentials");
-
-  clearSetupState();
-});
 
 test("classifyConnectionError accurately categorizes common Google Cloud failure modes", () => {
   const billingErr = classifyConnectionError(new Error("Project must have an active billing account linked."));
@@ -223,32 +193,45 @@ test("classifyConnectionError accurately categorizes common Google Cloud failure
 
   const permErr = classifyConnectionError(new Error("Permission denied on resource (403)."));
   assert.equal(permErr.category, "permission");
-  assert.match(permErr.guidance, /sufficient permissions/i);
+  assert.match(permErr.guidance, /permission/i);
 
   const apiErr = classifyConnectionError(new Error("Vertex AI API has not been used in project before or it is disabled."));
   assert.equal(apiErr.category, "api_disabled");
-  assert.match(apiErr.guidance, /Vertex AI API/i);
+  assert.match(apiErr.guidance, /required Google Cloud API/i);
 
   const tokenErr = classifyConnectionError(new Error("TOKEN_EXPIRED: Cloud token expired."));
   assert.equal(tokenErr.category, "token_expired");
-  assert.match(tokenErr.guidance, /token has expired/i);
+  assert.match(tokenErr.guidance, /authorization expired/i);
+
+  const cfgErr = classifyConnectionError(new Error("Google Cloud connection setup is not configured for this ReelBinder service. (OAUTH_NOT_CONFIGURED)"));
+  assert.equal(cfgErr.category, "setup_not_configured");
+  assert.match(cfgErr.guidance, /operator must set/i);
 
   const netErr = classifyConnectionError(new Error("Network timeout after 20000ms."));
   assert.equal(netErr.category, "network");
-  assert.match(netErr.guidance, /network/i);
+  assert.match(netErr.guidance, /could not be reached/i);
 });
 
-test("ConnectionsPanel renders the guided Gemini API Key option", () => {
+test("ConnectionsPanel presents included credits by default and bring-your-own as opt-in", () => {
   const { ConnectionsPanel } = transpileConnectionsPanel();
   assert.ok(ConnectionsPanel, "ConnectionsPanel should compile and export");
 
   const html = renderToStaticMarkup(React.createElement(ConnectionsPanel));
-  assert.match(html, /Gemini API Key/);
-  assert.match(html, /Google AI Studio/);
-  assert.match(html, /Script, Preflight analysis, Images, Video and Music/);
-  assert.match(html, /Standard OAuth \(Recommended\)/);
-  assert.match(html, /Express API Key/);
+  assert.match(html, /Use included monthly credits/);
+  assert.match(html, /Sign in with your Google account/);
+  assert.match(html, /Just sign in/);
+  assert.match(html, /Use your own Cloud project/);
+  assert.doesNotMatch(html, /Google AI Studio/);
+  assert.doesNotMatch(html, /Express API Key/);
 });
+
+test("ConnectionsControl distinguishes personal keys from managed research capacity", () => {
+  const { ConnectionsControl } = transpileConnectionsPanel();
+  const html = renderToStaticMarkup(React.createElement(ConnectionsControl));
+  assert.match(html, /personal Parallel key is optional/);
+  assert.match(html, /managed service capacity when available/);
+});
+
 
 test("testConnection posts an empty JSON body to the auth-only probe endpoint", async () => {
   const calls = [];
@@ -280,28 +263,17 @@ test("testConnection posts an empty JSON body to the auth-only probe endpoint", 
   }
 });
 
-test("image probe readiness separates rejected credentials from unavailable connection modes", () => {
+test("image probe readiness blocks failed OAuth access", () => {
   const rejected = {
     connectionId: "conn-401",
     provider: "google-cloud",
-    mode: "express",
+    mode: "standard",
     results: [
-      { tool: "script", model: "gemini", status: "failed", code: "401", message: "Rejected" },
       { tool: "image", model: "imagen", status: "failed", code: "401", message: "Rejected" },
-      { tool: "video", model: "veo", status: "failed", code: "UNSUPPORTED_MODE", message: "Unavailable" },
-      { tool: "music", model: "lyria", status: "failed", code: "UNSUPPORTED_MODE", message: "Unavailable" },
     ],
   };
   assert.equal(imageGenerationAvailable(true, rejected), false);
   assert.equal(imageProbeReadiness(rejected), "reauthenticate");
-
-  const unsupported = {
-    ...rejected,
-    connectionId: "conn-unsupported",
-    results: [{ tool: "image", model: "imagen", status: "failed", code: "UNSUPPORTED_MODE", message: "Unavailable" }],
-  };
-  assert.equal(imageProbeReadiness(unsupported), "unsupported");
-  assert.equal(imageGenerationAvailable(true, unsupported), false);
 });
 
 test("ConnectionRow renders Test, Renew, Disconnect and access status", () => {
@@ -312,8 +284,8 @@ test("ConnectionRow renders Test, Renew, Disconnect and access status", () => {
         connectionId: "conn-1",
         provider: "google-cloud",
         status: "configured",
+        mode: "standard",
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
-        mode: "gemini",
       },
       onTest: () => {},
       onRenew: () => {},
@@ -321,9 +293,9 @@ test("ConnectionRow renders Test, Renew, Disconnect and access status", () => {
     }),
   );
   assert.match(html, /Access untested/);
-  assert.match(html, />Test</);
-  assert.match(html, />Renew</);
-  assert.match(html, />Disconnect</);
+  assert.match(html, /Test/);
+  assert.match(html, /Renew/);
+  assert.match(html, /Disconnect/);
 });
 
 test("ConnectionRow renders verified and failed per-tool probe results", () => {
@@ -366,17 +338,17 @@ test("ConnectionRow renders verified and failed per-tool probe results", () => {
         provider: "google-cloud",
         status: "configured",
         expiresAt: Math.floor(Date.now() / 1000) + 3600,
-        mode: "express",
+        mode: "standard",
       },
       probe: {
         busy: false,
         result: {
           connectionId: "conn-1",
           provider: "google-cloud",
-          mode: "express",
+          mode: "standard",
           results: [
             { tool: "script", model: "gemini", status: "verified", code: "200", message: "Script OK" },
-            { tool: "video", model: "veo", status: "failed", code: "UNSUPPORTED_MODE", message: "Not available in express" },
+            { tool: "video", model: "veo", status: "failed", code: "PROVIDER_ERROR", message: "Video failed" },
           ],
         },
       },
@@ -385,10 +357,54 @@ test("ConnectionRow renders verified and failed per-tool probe results", () => {
       onDisconnect: () => {},
     }),
   );
-  assert.match(failed, /video unavailable in this connection mode/);
-  assert.match(failed, /video: unavailable/);
-  assert.match(failed, /renewal will not enable it/);
+  assert.match(failed, /video: failed/);
+  assert.match(failed, /PROVIDER_ERROR/);
   assert.doesNotMatch(failed, /Access verified/);
+});
+
+test("ConnectionRow renders inconclusive probe results as warning with resolution guidance", () => {
+  const { ConnectionRow } = transpileConnectionsPanel();
+  const html = renderToStaticMarkup(
+    React.createElement(ConnectionRow, {
+      connection: {
+        connectionId: "conn-1",
+        provider: "google-cloud",
+        status: "configured",
+        expiresAt: Math.floor(Date.now() / 1000) + 3600,
+        mode: "standard",
+        projectId: "proj-1",
+      },
+      probe: {
+        busy: false,
+        result: {
+          connectionId: "conn-1",
+          provider: "google-cloud",
+          mode: "standard",
+          results: [
+            { tool: "script", model: "gemini", status: "verified", code: "200", message: "Script OK" },
+            {
+              tool: "music",
+              model: "lyria",
+              status: "inconclusive",
+              code: "404",
+              message: "Model not found at this location; verify model ID and location",
+            },
+          ],
+        },
+      },
+      onTest: () => {},
+      onRenew: () => {},
+      onDisconnect: () => {},
+    }),
+  );
+  assert.match(html, /Access inconclusive/);
+  assert.match(html, /music: inconclusive/);
+  assert.match(html, /\(404\)/);
+  assert.match(html, /Model not found at this location; verify model ID and location/);
+  assert.match(html, /Verify the model ID and location, then test again/);
+  assert.match(html, /amber/);
+  assert.doesNotMatch(html, /Access verified/);
+  assert.doesNotMatch(html, /Access untested/);
 });
 
 test("getCinemaJobUsage fetches and validates the usage endpoint", async () => {
@@ -441,6 +457,7 @@ test("parseCinemaJobUsage validates expected fields and defaults missing kinds t
   assert.equal(kindParsed.jobs.byKind.script, 0);
   assert.equal(("unknown" in kindParsed.jobs.byKind), false);
 
+
   for (const bad of [
     null,
     { jobs: null, admission: { pending: 0, pendingLimit: 1 } },
@@ -450,6 +467,41 @@ test("parseCinemaJobUsage validates expected fields and defaults missing kinds t
     assert.throws(() => parseCinemaJobUsage(bad));
   }
 });
+test("parseCinemaJobUsage accepts assistant and managed-research credits", () => {
+  const credits = {
+    month: "2026-10",
+    admin: false,
+    byType: {
+      photoreal: { used: 1, limit: 100, remaining: 99 },
+      storyboard: { used: 0, limit: 100, remaining: 100 },
+      video: { used: 0, limit: 20, remaining: 20 },
+      music: { used: 0, limit: 10, remaining: 10 },
+      assistant: { used: 2, limit: 25, remaining: 23 },
+      parallel: { used: 1, limit: 10, remaining: 9 },
+    },
+  };
+  const parsed = parseCinemaJobUsage({
+    jobs: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0, byKind: {} },
+    admission: { pending: 0, pendingLimit: 2 },
+    generationCredits: credits,
+  });
+  assert.equal(parsed.generationCredits?.byType.assistant.remaining, 23);
+  assert.equal(parsed.generationCredits?.byType.parallel.limit, 10);
+
+  const admin = parseCinemaJobUsage({
+    jobs: { total: 0, queued: 0, running: 0, succeeded: 0, failed: 0, byKind: {} },
+    admission: { pending: 0, pendingLimit: 2 },
+    generationCredits: {
+      ...credits,
+      admin: true,
+      byType: Object.fromEntries(
+        Object.keys(credits.byType).map((kind) => [kind, { used: 0, limit: null, remaining: null }]),
+      ),
+    },
+  });
+  assert.equal(admin.generationCredits?.admin, true);
+  assert.equal(admin.generationCredits?.byType.assistant.limit, null);
+});
 
 test("formatCinemaRequestFailure surfaces the actual code and message", () => {
   const queue = new CinemaRequestFailure("The job queue is full.", 429, "QUEUE_FULL");
@@ -458,12 +510,3 @@ test("formatCinemaRequestFailure surfaces the actual code and message", () => {
   assert.match(text, /job queue is full/);
 });
 
-test("ConnectionsPanel renders the read-only job usage control", () => {
-  const { ConnectionsPanel } = transpileConnectionsPanel();
-  const html = renderToStaticMarkup(React.createElement(ConnectionsPanel));
-  assert.match(html, /Session job usage/);
-  assert.match(html, /Pending queue \/ limit/);
-  assert.match(html, /Check job usage/);
-  assert.match(html, /Terminal records stay for recovery/);
-  assert.doesNotMatch(html, /purge|reset usage|delete history|clear jobs/i);
-});

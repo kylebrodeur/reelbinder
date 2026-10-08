@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Copilot observations stay quiet: the page-agent DOM serializer draws numbered
+   bounding-box overlays into #playwright-highlight-container on every run start
+   (page-controller getFlatTree hardcodes doHighlightElements:true). Hide it —
+   the SimulatorMask cursor remains, only the scatter of boxes disappears. */
+#playwright-highlight-container {
+  display: none !important;
+}
+
 @theme {
   --color-background: #0d0e11;
   --color-foreground: #f1f0ea;

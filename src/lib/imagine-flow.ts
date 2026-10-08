@@ -17,7 +17,12 @@ import {
   type CinemaImageResult,
 } from "./cinema-images";
 import { buildFramePrompt } from "./prompts";
-import { frameCompositionDirection, rasterSha256, validateFrameComposition, type FrameCompositionGuide } from "./frame-composition";
+import {
+  frameCompositionDirection,
+  rasterSha256,
+  validateFrameComposition,
+  type FrameCompositionGuide,
+} from "./frame-composition";
 import {
   formatGateIssues,
   imageEditReadiness,
@@ -25,7 +30,12 @@ import {
   storyboardReadiness,
 } from "./production-gates";
 import { useSlate } from "./store";
-import { getImageRecovery, saveImageRecovery, validateImageRecoveryContext, type ImageRecovery } from "./image-recovery";
+import {
+  getImageRecovery,
+  saveImageRecovery,
+  validateImageRecoveryContext,
+  type ImageRecovery,
+} from "./image-recovery";
 import { withFrameImagePurpose, type FrameImageIntent } from "./image-purpose";
 import type { FrameKind } from "./types";
 
@@ -43,19 +53,36 @@ const activeShots = new Set<string>();
 function applyRecoveredImage(record: ImageRecovery, assets: CinemaImageAsset[]) {
   const current = useSlate.getState().project;
   const currentShot = current.shots.find((shot) => shot.id === record.shotId);
-  if (current.id !== record.localProjectId || !currentShot) return {
-    ok: true as const, url: assets[0].url, assets, jobId: record.jobId,
-    message: "Image generated for the previous project. The current project was not changed.",
-  };
+  if (current.id !== record.localProjectId || !currentShot)
+    return {
+      ok: true as const,
+      url: assets[0].url,
+      assets,
+      jobId: record.jobId,
+      message: "Image generated for the previous project. The current project was not changed.",
+    };
   const unchanged = JSON.stringify(current) === record.sourceFingerprint;
-  const history = appendFrameVersions(currentShot, assets, record.kind, Date.now(), record.frameContext);
+  const history = appendFrameVersions(
+    currentShot,
+    assets,
+    record.kind,
+    Date.now(),
+    record.frameContext,
+  );
   if (JSON.stringify(history) !== JSON.stringify(currentShot.frameHistory ?? []) || unchanged)
     useSlate.getState().patchShot(record.shotId, {
       frameHistory: history,
       ...(unchanged ? { frameUrl: assets[0].url, frameKind: record.kind } : {}),
     });
-  return { ok: true as const, url: assets[0].url, assets, jobId: record.jobId,
-    message: unchanged ? "Image ready. Earlier versions are kept in frame history." : "Image saved to frame history. Your current frame was kept." };
+  return {
+    ok: true as const,
+    url: assets[0].url,
+    assets,
+    jobId: record.jobId,
+    message: unchanged
+      ? "Image ready. Earlier versions are kept in frame history."
+      : "Image saved to frame history. Your current frame was kept.",
+  };
 }
 
 async function executeImageRecovery(initial: ImageRecovery, onJob?: (id: string) => void) {
@@ -63,11 +90,17 @@ async function executeImageRecovery(initial: ImageRecovery, onJob?: (id: string)
   let returnedResult = false;
   try {
     await validateImageRecoveryContext(record);
-    if (record.status === "failed") throw new Error(record.error ?? "The previous image job failed. Start a new image explicitly.");
+    if (record.status === "failed")
+      throw new Error(
+        record.error ?? "The previous image job failed. Start a new image explicitly.",
+      );
     if (!record.jobId) {
       // Replay the original key even if its connection expired: the backend resolves
       // prior admission before checking credentials, and enforces session ownership.
-      const admitted = await cinemaRequest<{ jobId: string }>("/jobs", { method: "POST", body: JSON.stringify(record.request) });
+      const admitted = await cinemaRequest<{ jobId: string }>("/jobs", {
+        method: "POST",
+        body: JSON.stringify(record.request),
+      });
       assertCinemaJobId(admitted.jobId);
       record = { ...record, jobId: admitted.jobId };
       // If this write fails, the prior null-job intent still replays the exact same key.
@@ -77,12 +110,20 @@ async function executeImageRecovery(initial: ImageRecovery, onJob?: (id: string)
     const result = await waitForCinemaJob<CinemaImageResult>(record.jobId!);
     returnedResult = true;
     const assets = validateCinemaImageResult(result, {
-      projectId: record.request.projectId!, revision: record.request.expectedRevision!, shotId: record.shotId,
-      jobId: record.jobId, referenceAssetIds: record.request.input.referenceAssetIds as string[],
+      projectId: record.request.projectId!,
+      revision: record.request.expectedRevision!,
+      shotId: record.shotId,
+      jobId: record.jobId,
+      referenceAssetIds: record.request.input.referenceAssetIds as string[],
     });
-    if (record.status === "succeeded" && JSON.stringify(assets.map(asset => [asset.assetId, asset.url, asset.sha256])) !==
-        JSON.stringify(record.assets!.map(asset => [asset.assetId, asset.url, asset.sha256])))
-      throw new Error("The recovered job no longer matches its saved image result. Keep its receipt for review.");
+    if (
+      record.status === "succeeded" &&
+      JSON.stringify(assets.map((asset) => [asset.assetId, asset.url, asset.sha256])) !==
+        JSON.stringify(record.assets!.map((asset) => [asset.assetId, asset.url, asset.sha256]))
+    )
+      throw new Error(
+        "The recovered job no longer matches its saved image result. Keep its receipt for review.",
+      );
     record = { ...record, status: "succeeded", assets };
     saveImageRecovery(record);
     return applyRecoveredImage(record, assets);
@@ -93,21 +134,33 @@ async function executeImageRecovery(initial: ImageRecovery, onJob?: (id: string)
         : error instanceof Error
           ? error.message
           : "Image generation could not finish.";
-    if (record.status === "pending" && (returnedResult || (error instanceof CinemaJobFailure && error.code !== "INTERRUPTED_UNCERTAIN"))) {
-      try { saveImageRecovery({ ...record, status: "failed", error: message }); }
-      catch (storageError) { message += ` ${storageError instanceof Error ? storageError.message : "Keep recovery data."}`; }
+    if (
+      record.status === "pending" &&
+      (returnedResult ||
+        (error instanceof CinemaJobFailure && error.code !== "INTERRUPTED_UNCERTAIN"))
+    ) {
+      try {
+        saveImageRecovery({ ...record, status: "failed", error: message });
+      } catch (storageError) {
+        message += ` ${storageError instanceof Error ? storageError.message : "Keep recovery data."}`;
+      }
     }
     return { ok: false as const, error: message, jobId: record.jobId };
   }
 }
 
-export async function resumeShotImage(shotId: string, options: { onJob?: (id: string) => void } = {}) {
+export async function resumeShotImage(
+  shotId: string,
+  options: { onJob?: (id: string) => void } = {},
+) {
   const project = useSlate.getState().project;
   const key = `${project.id}:${shotId}`;
-  if (activeShots.has(key)) return { ok: false as const, error: "An image job is already running for this shot." };
+  if (activeShots.has(key))
+    return { ok: false as const, error: "An image job is already running for this shot." };
   activeShots.add(key);
   try {
-    if (!project.shots.some(shot => shot.id === shotId)) throw new Error("The source setup no longer exists. Keep its recovery record.");
+    if (!project.shots.some((shot) => shot.id === shotId))
+      throw new Error("The source setup no longer exists. Keep its recovery record.");
     const record = getImageRecovery(project.id, shotId);
     if (!record) throw new Error("There is no saved image request for this setup.");
     return await executeImageRecovery(record, options.onJob);
@@ -121,7 +174,9 @@ export async function resumeShotImage(shotId: string, options: { onJob?: (id: st
             ? error.message
             : "Could not restore image request.",
     };
-  } finally { activeShots.delete(key); }
+  } finally {
+    activeShots.delete(key);
+  }
 }
 
 async function runShotImage(
@@ -137,7 +192,12 @@ async function runShotImage(
     const current = useSlate.getState().project;
     const recovery = getImageRecovery(current.id, shotId);
     if (recovery?.status === "pending") return resumeShotImage(shotId, options);
-    if (recovery) return { ok: false as const, error: "The previous image request is resolved. Choose New image before starting another paid generation." };
+    if (recovery)
+      return {
+        ok: false as const,
+        error:
+          "The previous image request is resolved. Choose New image before starting another paid generation.",
+      };
   } catch (error) {
     return {
       ok: false as const,
@@ -152,17 +212,34 @@ async function runShotImage(
   if (!options?.connectionId)
     return {
       ok: false as const,
-      error: "Choose a Google Cloud connection in the selected shot's Frame controls.",
+      error: "Open Settings > App to connect Google Cloud before starting image generation.",
     };
   const project = structuredClone(useSlate.getState().project);
   const sourceShot = project.shots.find((shot) => shot.id === shotId);
-  if (!sourceShot)
-    return { ok: false as const, error: "No shot selected." };
-  const gate = intent === "storyboard"
-    ? storyboardReadiness(project, shotId, options.frameGuide ?? null, options.overheadReviewFingerprint ?? null)
-    : intent === "photoreal"
-      ? photorealReadiness(project, shotId, options.placementReviewFingerprint ?? null)
-      : imageEditReadiness(project, shotId, sourceShotId, options.imageReviewFingerprint ?? null);
+  if (!sourceShot) return { ok: false as const, error: "No shot selected." };
+  const gate =
+    intent === "storyboard"
+      ? storyboardReadiness(
+          project,
+          shotId,
+          options.frameGuide ?? null,
+          options.overheadReviewFingerprint ?? null,
+        )
+      : intent === "photoreal" && options.frameGuide?.captureKind === "plan"
+        ? storyboardReadiness(
+            project,
+            shotId,
+            options.frameGuide,
+            options.overheadReviewFingerprint ?? null,
+          )
+        : intent === "photoreal"
+          ? photorealReadiness(project, shotId, options.placementReviewFingerprint ?? null)
+          : imageEditReadiness(
+              project,
+              shotId,
+              sourceShotId,
+              options.imageReviewFingerprint ?? null,
+            );
   if (!gate.ready) return { ok: false as const, error: formatGateIssues(gate) };
   const key = `${project.id}:${shotId}`;
   if (activeShots.has(key))
@@ -174,8 +251,10 @@ async function runShotImage(
     if (options.frameGuide) {
       await validateFrameComposition(options.frameGuide, project, shotId);
       if (options.frameGuide.captureKind === "plan") {
-        if (intent !== "storyboard" || referenceUrl)
-          throw new Error("A plan-only guide can only be the sole reference for a reviewed storyboard.");
+        if ((intent !== "storyboard" && intent !== "photoreal") || referenceUrl)
+          throw new Error(
+            "A plan-only guide can only be the sole reference for a reviewed storyboard or photoreal first frame.",
+          );
       } else if (referenceUrl !== options.frameGuide.sourceFrameUrl) {
         throw new Error("The Frame guide must use the current clean still as its first reference.");
       }
@@ -210,7 +289,7 @@ async function runShotImage(
         });
         if (!uploaded.assetId || privateImageAssetId(uploaded.url) !== uploaded.assetId)
           throw new Error("The reference upload returned invalid metadata.");
-        if (options.frameGuide && uploaded.sha256 !== await rasterSha256(referenceUrl))
+        if (options.frameGuide && uploaded.sha256 !== (await rasterSha256(referenceUrl)))
           throw new Error("The uploaded clean still does not match the captured Frame source.");
         referenceAssetIds.push(uploaded.assetId);
       }
@@ -224,40 +303,53 @@ async function runShotImage(
         }),
       });
       if (
-        !uploaded.assetId || privateImageAssetId(uploaded.url) !== uploaded.assetId ||
+        !uploaded.assetId ||
+        privateImageAssetId(uploaded.url) !== uploaded.assetId ||
         uploaded.sha256 !== options.frameGuide.sha256
-      ) throw new Error("The uploaded Frame guide does not match the reviewed composition.");
+      )
+        throw new Error("The uploaded Frame guide does not match the reviewed composition.");
       referenceAssetIds.push(uploaded.assetId);
-      const sourceDigest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(fingerprint));
-      const sourceProjectSha256 = [...new Uint8Array(sourceDigest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+      const sourceDigest = await crypto.subtle.digest(
+        "SHA-256",
+        new TextEncoder().encode(fingerprint),
+      );
+      const sourceProjectSha256 = [...new Uint8Array(sourceDigest)]
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
       frameContext = {
         references: [uploaded],
         composition: {
-          ...(options.frameGuide.layers ? { layers: structuredClone(options.frameGuide.layers) } : {}),
+          ...(options.frameGuide.layers
+            ? { layers: structuredClone(options.frameGuide.layers) }
+            : {}),
           guideSha256: options.frameGuide.sha256,
           sourceFrameUrl: options.frameGuide.sourceFrameUrl,
           sourceProjectSha256,
           sourceShotId: shotId,
           sketch: structuredClone(sourceShot.sketch),
           annotations: structuredClone(sourceShot.annotations),
-          ...(options.frameGuide.captureKind === "plan" ? {
-            reviewedPlan: {
-              version: 1 as const,
-              projectId: project.id,
-              shotId,
-              setup: sourceShot.setup,
-              planAssetId: uploaded.assetId,
-              planSha256: uploaded.sha256,
-              sourceProjectSha256,
-              approvalFingerprint: options.overheadReviewFingerprint!,
-            },
-          } : {}),
+          ...(options.frameGuide.captureKind === "plan"
+            ? {
+                reviewedPlan: {
+                  version: 1 as const,
+                  projectId: project.id,
+                  shotId,
+                  setup: sourceShot.setup,
+                  planAssetId: uploaded.assetId,
+                  planSha256: uploaded.sha256,
+                  sourceProjectSha256,
+                  approvalFingerprint: options.overheadReviewFingerprint!,
+                },
+              }
+            : {}),
         },
       };
     }
     const ensureSourceUnchanged = () => {
       if (JSON.stringify(useSlate.getState().project) !== fingerprint)
-        throw new Error("The Project changed while preparing this image. Review the current plan and try again.");
+        throw new Error(
+          "The Project changed while preparing this image. Review the current plan and try again.",
+        );
     };
     ensureSourceUnchanged();
     const saved = await cinemaRequest<{ projectId: string; revision: number }>("/projects", {
@@ -268,13 +360,27 @@ async function runShotImage(
       throw new Error("The image source snapshot could not be saved.");
     ensureSourceUnchanged();
     const record: ImageRecovery = {
-      version: 1, localProjectId: project.id, shotId, kind, sourceFingerprint: fingerprint,
-      createdAt: Date.now(), jobId: null, status: "pending",
+      version: 1,
+      localProjectId: project.id,
+      shotId,
+      kind,
+      sourceFingerprint: fingerprint,
+      createdAt: Date.now(),
+      jobId: null,
+      status: "pending",
       ...(frameContext ? { frameContext } : {}),
       request: {
-        kind: "image", connectionId: options.connectionId, projectId: saved.projectId,
-        expectedRevision: saved.revision, idempotencyKey: crypto.randomUUID(),
-        input: withFrameImagePurpose(intent, { prompt, aspectRatio: "16:9", referenceAssetIds, shotId }),
+        kind: "image",
+        connectionId: options.connectionId,
+        projectId: saved.projectId,
+        expectedRevision: saved.revision,
+        idempotencyKey: crypto.randomUUID(),
+        input: withFrameImagePurpose(intent, {
+          prompt,
+          aspectRatio: "16:9",
+          referenceAssetIds,
+          shotId,
+        }),
       },
     };
     saveImageRecovery(record);
@@ -306,9 +412,11 @@ export async function generateShotFrame(
   const prompt = [
     kind === "storyboard" && options?.frameGuide
       ? frameCompositionDirection(options.frameGuide, shot)
-      : kind === "still"
-        ? "Use Image 1 as the reviewed storyboard composition. Preserve its blocking, screen direction, eyelines, room geography, hands and prop placement while rendering one photoreal cinematic still. Do not add text or captions."
-        : "",
+      : kind === "still" && options?.frameGuide?.captureKind === "plan"
+        ? `${frameCompositionDirection(options.frameGuide, shot)}\nRender this as the photorealistic first frame of the shot. Do not add text or captions.`
+        : kind === "still"
+          ? "Use Image 1 as the reviewed storyboard composition. Preserve its blocking, screen direction, eyelines, room geography, hands and prop placement while rendering one photoreal cinematic still. Do not add text or captions."
+          : "",
     buildFramePrompt(shot, project, kind),
     options?.direction?.trim(),
   ]
@@ -319,7 +427,9 @@ export async function generateShotFrame(
     kind,
     prompt,
     options,
-    kind === "still" ? shot.frameUrl ?? undefined : undefined,
+    kind === "still" && options?.frameGuide?.captureKind !== "plan"
+      ? (shot.frameUrl ?? undefined)
+      : undefined,
     kind === "storyboard" ? "storyboard" : "photoreal",
   );
 }

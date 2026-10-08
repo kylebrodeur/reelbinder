@@ -16,6 +16,8 @@ ReelBinder keeps screenplay text, coverage, shot planning, media provenance, and
 - [Project Format Contract](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/docs/slate-format-contract.md): Portable archive and interchange contract in Markdown.
 - [Credits and Rights](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/CREDITS.md): Software credits and the separate rights boundary for screenplay and media.
 
+- [WebMCP agent tools](https://docs.reelbinder.app/webmcp/): Connect a desktop MCP client to the browser Studio; the current hosted release exposes 10 tools, while the source/next-release guide documents the 20-tool catalog with typed overhead, frame, cut-sync, frame-history, and still-ingest operations.
+
 ## Optional
 
 - [Planning Study Notes](https://raw.githubusercontent.com/kylebrodeur/reelbinder/main/public/demo/README.md): Scope and intended use of the source-only sample.

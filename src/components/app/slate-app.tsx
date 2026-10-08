@@ -18,11 +18,21 @@ import { CoverageDock } from "@/components/app/coverage-dock";
 import { FilmEntryDialog } from "@/components/app/film-entry-dialog";
 import { RenderView } from "@/components/app/render-view";
 import { PreflightControl } from "@/components/app/preflight-control";
+import {
+  ProductionAssistantProvider,
+  ProductionAssistantSidebar,
+  type AssistantSidebarTab,
+} from "@/components/app/production-assistant-sidebar";
 import { ProductionDrawer, type ProdTab } from "@/components/app/production-drawer";
 import { ScriptView } from "@/components/app/script-view";
 import { SettingsDialog } from "@/components/app/settings-dialog";
+import {
+  SLATE_OPEN_SETTINGS_EVENT,
+  type SettingsTab,
+} from "@/components/app/cinema-connections";
 import { StageView } from "@/components/app/stage-view";
 import { PortableImportDialog } from "@/components/app/portable-import-dialog";
+import { WebmcpBridge } from "@/components/app/webmcp-bridge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -60,8 +70,15 @@ export function SlateApp() {
   const hydrated = useSlate((s) => s.hydrated);
   const [newOpen, setNewOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>("project");
   const [prodOpen, setProdOpen] = useState(false);
   const [prodTab, setProdTab] = useState<ProdTab>("originals");
+  const [copilotOpen, setCopilotOpen] = useState(false);
+  const [copilotTab, setCopilotTab] = useState<AssistantSidebarTab>("gemini");
+  const openCopilotChecks = () => {
+    setCopilotTab("checks");
+    setCopilotOpen(true);
+  };
   const [portableImportOpen, setPortableImportOpen] = useState(false);
   const importRef = useRef<HTMLInputElement>(null);
   const activeImport = useRef<Pick<ReturnType<typeof createProjectOpenAttempt>, "signal" | "cancel"> | null>(null);
@@ -69,6 +86,27 @@ export function SlateApp() {
   const autoOpenedFreshProject = useRef(false);
 
   useEffect(() => () => activeImport.current?.cancel(), []);
+
+  // Boot splash removal: __root.tsx paints the themed shell from inline
+  // critical CSS behind #boot-splash; as soon as the app mounts it sets
+  // data-app-ready="1", which the splash CSS reads to hide itself. The 15s
+  // inline fallback in the root stays as the no-hydration safety valve.
+  useEffect(() => {
+    document.documentElement.dataset.appReady = "1";
+  }, []);
+
+  // Connection/setup affordances elsewhere (e.g. the assistant sidebar) open
+  // Settings directly on the requested tab instead of duplicating the flow.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail = (event.detail ?? {}) as { tab?: string };
+      setSettingsInitialTab(detail.tab === "app" || detail.tab === "appearance" ? detail.tab : "project");
+      setSettingsOpen(true);
+    };
+    window.addEventListener(SLATE_OPEN_SETTINGS_EVENT, handler);
+    return () => window.removeEventListener(SLATE_OPEN_SETTINGS_EVENT, handler);
+  }, []);
 
   useEffect(() => {
     const finish = () => {
@@ -284,13 +322,15 @@ export function SlateApp() {
 
   return (
     <TooltipProvider delayDuration={200}>
-      <div
-        className={cn(
-          "flex min-h-dvh min-w-0 flex-col bg-background",
-          "h-dvh overflow-hidden",
-        )}
-        suppressHydrationWarning
-      >
+      <ProductionAssistantProvider>
+        <div
+          className={cn(
+            "flex min-h-dvh min-w-0 flex-col bg-background",
+            "h-dvh overflow-hidden",
+          )}
+          suppressHydrationWarning
+        >
+        <WebmcpBridge />
         <header className="shrink-0 border-b border-border bg-background px-3 sm:px-4">
           <div className="grid min-h-12 grid-cols-1 items-center gap-1.5 py-1.5 min-[540px]:grid-cols-[minmax(0,1fr)_auto] lg:flex lg:h-12 lg:justify-between lg:gap-4 lg:py-0">
             {/* Left: Brand / Project Menu & Inline Title */}
@@ -419,7 +459,12 @@ export function SlateApp() {
             }}
           />
         </header>
-        <PreflightControl presentation="workspace" />
+        <PreflightControl
+          presentation="workspace"
+          copilotOpen={copilotOpen}
+          onToggleCopilot={() => setCopilotOpen((open) => !open)}
+          onOpenCopilotChecks={openCopilotChecks}
+        />
 
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
           <main className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
@@ -428,6 +473,12 @@ export function SlateApp() {
             {view === "edit" && <EditView />}
             {view === "render" && <RenderView />}
           </main>
+          <ProductionAssistantSidebar
+            open={copilotOpen}
+            onClose={() => setCopilotOpen(false)}
+            tab={copilotTab}
+            onTabChange={setCopilotTab}
+          />
         </div>
         <CoverageDock />
         <FilmEntryDialog open={newOpen} onOpenChange={setNewOpen} />
@@ -438,6 +489,7 @@ export function SlateApp() {
         <SettingsDialog
           open={settingsOpen}
           onOpenChange={setSettingsOpen}
+          initialTab={settingsInitialTab}
           onOpenWorld={() => {
             setProdTab("cut");
             setProdOpen(true);
@@ -463,7 +515,8 @@ export function SlateApp() {
           }}
         />
         {!hydrated && <span className="sr-only">Loading script</span>}
-      </div>
+        </div>
+      </ProductionAssistantProvider>
     </TooltipProvider>
   );
 }

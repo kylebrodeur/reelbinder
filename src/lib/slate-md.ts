@@ -1,7 +1,7 @@
 import { draftsFromScript, looksLikeCharacter, looksLikeScene, looksLikeTransition, parseSlugline, sceneIdForElement } from "./fountain";
 import { productionItemMetadata, reconcileProductionCatalog } from "./production-catalog";
 import { validateScriptCommentThreads, type ScriptCommentThread } from "./script-comments";
-import { applyPublicDemoMediaPolicy } from "./demo-media-provenance";
+import { retirePreHackathonDemoMedia } from "./demo-media-provenance";
 import { isCoverageSize, lineColorAt, sizeFromCamera } from "./lining";
 import {
   attachPeeled,
@@ -761,7 +761,7 @@ export function parsedToProject(parsed: ParsedSlate, id?: string): Project {
     timeline: emptyTimeline(),
     updatedAt: Date.now(),
   };
-  return applyPublicDemoMediaPolicy(reconcileProductionCatalog(hydrateWorld(project)));
+  return retirePreHackathonDemoMedia(reconcileProductionCatalog(hydrateWorld(project)));
 }
 
 function wrapText(text: string, width = 68): string {

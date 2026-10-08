@@ -66,7 +66,7 @@ function parse(raw: string, projectId: string, shotId: string): ImageRecovery {
       }
       if (composition.reviewedPlan !== undefined) {
         const reviewed = composition.reviewedPlan;
-        if (value.kind !== "storyboard" || composition.sourceFrameUrl !== "" || !object(composition.layers) || !object(reviewed) ||
+        if (value.kind !== "storyboard" && value.kind !== "still" || composition.sourceFrameUrl !== "" || !object(composition.layers) || !object(reviewed) ||
             !only(reviewed, ["version","projectId","shotId","setup","planAssetId","planSha256","sourceProjectSha256","approvalFingerprint"]) ||
             reviewed.version !== 1 || reviewed.projectId !== projectId || reviewed.shotId !== shotId || reviewed.setup !== sourceShot.setup ||
             reviewed.planAssetId !== guide.assetId || reviewed.planSha256 !== guide.sha256 ||
@@ -93,7 +93,7 @@ function parse(raw: string, projectId: string, shotId: string): ImageRecovery {
 }
 export function getImageRecovery(projectId: string, shotId: string): ImageRecovery | null {
   let raw: string | null;
-  try { raw = sessionStorage.getItem(key(projectId, shotId)); }
+  try { raw = localStorage.getItem(key(projectId, shotId)); }
   catch { throw new Error("Image recovery storage is unavailable. Restore session storage before generating."); }
   return raw === null ? null : parse(raw, projectId, shotId);
 }
@@ -106,8 +106,8 @@ export function saveImageRecovery(record: ImageRecovery): void {
       (previous.jobId !== null && previous.jobId !== record.jobId)))
     throw new Error("Another image request owns this setup's recovery record. Keep it for review.");
   try {
-    sessionStorage.setItem(key(record.localProjectId, record.shotId), raw);
-    if (sessionStorage.getItem(key(record.localProjectId, record.shotId)) !== raw) throw new Error("not retained");
+    localStorage.setItem(key(record.localProjectId, record.shotId), raw);
+    if (localStorage.getItem(key(record.localProjectId, record.shotId)) !== raw) throw new Error("not retained");
   } catch { throw new Error("Could not retain image recovery. Keep the pending request; do not start another paid image."); }
 }
 /** Only an explicitly resolved generation may be discarded to authorize a new paid intent. */
@@ -115,7 +115,7 @@ export function clearResolvedImageRecovery(projectId: string, shotId: string): v
   const record = getImageRecovery(projectId, shotId);
   if (!record) return;
   if (record.status === "pending") throw new Error("This image request is unresolved. Resume it instead of starting another paid image.");
-  sessionStorage.removeItem(key(projectId, shotId));
+  localStorage.removeItem(key(projectId, shotId));
   if (getImageRecovery(projectId, shotId)) throw new Error("Could not clear the resolved image. Try again before generating.");
 }
 

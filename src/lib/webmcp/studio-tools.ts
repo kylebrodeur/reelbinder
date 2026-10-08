@@ -5,7 +5,9 @@ import { MARK_TAGS, VIEWS } from "../types.ts";
 import type { InputSchema } from "@mcp-b/webmcp-types";
 import { applyUiPatch, inspectUiControls } from "./ui-json.ts";
 import { executeProductionTool } from "./production-tools.ts";
-
+import { cinemaRequest, getCinemaConnections, getCinemaHealth, testConnection } from "../cinema-client.ts";
+import { productionIssues } from "../production-assistant.ts";
+import { localPreflight } from "../preflight.ts";
 export interface StudioToolAnnotations {
   readOnlyHint: boolean;
   consequentialHint?: boolean;
@@ -66,6 +68,23 @@ function buildGetStudioState(): StudioToolExecution {
       2,
     ),
   );
+}
+
+function buildGetProductionChecks(): StudioToolExecution {
+  const state = useSlate.getState();
+  const project = state.project;
+  const local = localPreflight(project);
+  const continuity = state.issues;
+  const issues = productionIssues(local, continuity, [], []);
+  const summary = issues.map(({ title, detail, shotId, elementId, key, origin }) => ({
+    title,
+    detail,
+    shotId,
+    elementId,
+    key,
+    origin,
+  }));
+  return textResult(JSON.stringify(summary, null, 2));
 }
 
 function buildGetUiSnapshot(args: Record<string, unknown>): StudioToolExecution {
@@ -303,6 +322,48 @@ function buildStageAssistantQuestion(args: Record<string, unknown>): StudioToolE
   }
   return textResult(`Staged assistant question for project "${projectId}".`);
 }
+async function buildGetConnectionStatus(): Promise<StudioToolExecution> {
+  try {
+    const [connections, health] = await Promise.all([getCinemaConnections(), getCinemaHealth()]);
+    return textResult(JSON.stringify({ connections, health }, null, 2));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Could not read connection status." };
+  }
+}
+
+function buildStartGoogleConnection(args: Record<string, unknown>): StudioToolExecution {
+  const renewalConnectionId = args.renewalConnectionId;
+  if (renewalConnectionId !== undefined && typeof renewalConnectionId !== "string") {
+    return { ok: false, error: "renewalConnectionId must be a connection id string when supplied." };
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("slate:start-google-connection", {
+      detail: { renewalConnectionId: renewalConnectionId ?? null },
+    }));
+  }
+  return textResult("Google Cloud OAuth setup started in the active ReelBinder page. Complete only the normal Google sign-in or 2-step verification prompts.");
+}
+
+async function buildTestConnection(args: Record<string, unknown>): Promise<StudioToolExecution> {
+  const connectionId = asString(args.connectionId, "connectionId");
+  if (typeof connectionId !== "string") return connectionId;
+  try {
+    return textResult(JSON.stringify(await testConnection(connectionId), null, 2));
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Connection test failed." };
+  }
+}
+
+async function buildDisconnectConnection(args: Record<string, unknown>): Promise<StudioToolExecution> {
+  const connectionId = asString(args.connectionId, "connectionId");
+  if (typeof connectionId !== "string") return connectionId;
+  try {
+    await cinemaRequest(`/connections/${encodeURIComponent(connectionId)}`, { method: "DELETE" });
+    return textResult(`Disconnected connection "${connectionId}".`);
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : "Connection disconnect failed." };
+  }
+}
 
 const TOOLS: StudioToolDescriptor[] = [
   {
@@ -347,7 +408,7 @@ const TOOLS: StudioToolDescriptor[] = [
                 type: "string",
                 enum: ["click", "fill", "select", "check", "uncheck", "focus"],
               },
-              value: { type: "string" },
+              value: { type: ["string", "number", "boolean"] },
             },
             required: ["ref", "action"],
             additionalProperties: false,
@@ -366,6 +427,28 @@ const TOOLS: StudioToolDescriptor[] = [
     description:
       "Returns the current ReelBinder studio state: active view, project id/title, selected setup/element ids, hydration status, and counts of setups, screenplay elements, and marks.",
     inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    autoExecutable: true,
+  },
+  {
+    name: "get_production_checks",
+    description:
+      "Lists the current production checks (issues) for the project: local preflight findings plus stage continuity checks for the focused setup. Each item carries title, detail, and the setup/element id it concerns, so the assistant can propose a specific fix.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    autoExecutable: true,
+  },
+  {
+    name: "search_parallel",
+    description:
+      "Runs one Parallel web search on the given question and returns cited http(s) sources for facts the project does not record. Consume it before answering when the reply depends on external facts; the same call lands as a row in the Research tab.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        question: { type: "string", minLength: 1, maxLength: 4000 },
+      },
+      required: ["question"],
+    },
     annotations: { readOnlyHint: true },
     autoExecutable: true,
   },
@@ -581,6 +664,7 @@ const TOOLS: StudioToolDescriptor[] = [
       type: "object",
       properties: {
         expectedProjectId: { type: "string", minLength: 1 },
+        expectedRevision: { type: ["string", "number"], description: "Project revision returned by get_cut_state; a numeric token is coerced to its string form." },
         expectedPictureClipIds: { type: "array", maxItems: 500, items: { type: "string", minLength: 1 } },
         orderedPictureClipIds: { type: "array", maxItems: 500, items: { type: "string", minLength: 1 } },
       },
@@ -597,7 +681,7 @@ const TOOLS: StudioToolDescriptor[] = [
       properties: {
         shotId: { type: "string", minLength: 1 },
         expectedProjectId: { type: "string", minLength: 1 },
-        expectedRevision: { type: "string", minLength: 1 },
+        expectedRevision: { type: ["string", "number"], description: "Project revision returned by get_frame_state; a numeric token is coerced to its string form." },
         expectedHistoryIds: { type: "array", maxItems: 500, items: { type: "string", minLength: 1 } },
         removeIds: { type: "array", minItems: 1, maxItems: 500, items: { type: "string", minLength: 1 } },
       },
@@ -616,11 +700,50 @@ const TOOLS: StudioToolDescriptor[] = [
         setup: { type: "string", minLength: 1 },
         dataUrl: { type: "string", minLength: 1, maxLength: 1500000 },
         expectedProjectId: { type: "string", minLength: 1 },
-        expectedRevision: { type: "string", minLength: 1 },
+        expectedRevision: { type: ["string", "number"], description: "Project revision returned by get_frame_state; a numeric token is coerced to its string form." },
         expectedFrameUrl: { type: ["string", "null"] },
         expectedHistoryIds: { type: "array", maxItems: 500, items: { type: "string", minLength: 1 } },
       },
       required: ["shotId", "setup", "dataUrl", "expectedProjectId", "expectedRevision", "expectedFrameUrl", "expectedHistoryIds"],
+    },
+    annotations: { readOnlyHint: false, consequentialHint: true },
+    autoExecutable: false,
+  },
+  {
+    name: "get_connection_status",
+    description: "Returns this visitor's configured Google Cloud and Parallel connections plus server-reported capability status. Secrets are never returned.",
+    inputSchema: { type: "object", properties: {} },
+    annotations: { readOnlyHint: true },
+    autoExecutable: true,
+  },
+  {
+    name: "start_google_connection",
+    description: "Starts server-owned Google Cloud OAuth setup in the active ReelBinder page. The flow discovers a Cloud project, checks billing, enables required APIs when permitted, stores encrypted session credentials, and does not accept API keys.",
+    inputSchema: {
+      type: "object",
+      properties: { renewalConnectionId: { type: "string", description: "Existing Google connection id to renew, if repairing a connection." } },
+    },
+    annotations: { readOnlyHint: false, consequentialHint: true },
+    autoExecutable: false,
+  },
+  {
+    name: "test_connection",
+    description: "Runs the non-generation access probe for one configured connection.",
+    inputSchema: {
+      type: "object",
+      properties: { connectionId: { type: "string", minLength: 1 } },
+      required: ["connectionId"],
+    },
+    annotations: { readOnlyHint: true },
+    autoExecutable: true,
+  },
+  {
+    name: "disconnect_connection",
+    description: "Disconnects one visitor-scoped provider connection. The saved secret is deleted from the session store.",
+    inputSchema: {
+      type: "object",
+      properties: { connectionId: { type: "string", minLength: 1 } },
+      required: ["connectionId"],
     },
     annotations: { readOnlyHint: false, consequentialHint: true },
     autoExecutable: false,
@@ -665,6 +788,8 @@ export async function executeStudioTool(
       return buildApplyUiPatch(args);
     case "get_studio_state":
       return buildGetStudioState();
+    case "get_production_checks":
+      return buildGetProductionChecks();
     case "get_script_outline":
       return buildGetScriptOutline(args);
     case "get_shot":
@@ -690,6 +815,14 @@ export async function executeStudioTool(
     case "patch_frame_history":
     case "import_still":
       return executeProductionTool(name, args);
+    case "get_connection_status":
+      return buildGetConnectionStatus();
+    case "start_google_connection":
+      return buildStartGoogleConnection(args);
+    case "test_connection":
+      return buildTestConnection(args);
+    case "disconnect_connection":
+      return buildDisconnectConnection(args);
     case "stage_assistant_question":
       return buildStageAssistantQuestion(args);
     default:

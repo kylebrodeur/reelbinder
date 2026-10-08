@@ -1,5 +1,6 @@
 import { Check } from "lucide-react";
-import { ConnectionsPanel } from "@/components/app/cinema-connections";
+import { useEffect, useState } from "react";
+import { ConnectionsPanel, type SettingsTab } from "@/components/app/cinema-connections";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,15 +21,23 @@ export function SettingsDialog({
   onOpenChange,
   onOpenWorld,
   onOpenCast,
+  initialTab,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenWorld: () => void;
   onOpenCast: () => void;
+  /** Requested tab for this open, e.g. "app" when a setup affordance opens Settings. */
+  initialTab?: SettingsTab;
 }) {
   const project = useSlate((state) => state.project);
   const patchProject = useSlate((state) => state.patchProject);
   const { theme, setTheme, themes } = useTheme();
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "project");
+
+  useEffect(() => {
+    if (open && initialTab) setActiveTab(initialTab);
+  }, [open, initialTab]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -39,7 +48,7 @@ export function SettingsDialog({
             Project details, appearance themes and account connections.
           </DialogDescription>
         </DialogHeader>
-        <Tabs defaultValue="project">
+        <Tabs value={activeTab} onValueChange={(next) => setActiveTab(next as SettingsTab)}>
           <TabsList aria-label="Settings">
             <TabsTrigger value="project">Project</TabsTrigger>
             <TabsTrigger value="appearance">Appearance</TabsTrigger>

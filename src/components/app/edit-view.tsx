@@ -1,7 +1,6 @@
 import {
   ArrowLeft,
   ArrowRight,
-  Bot,
   Check,
   Clapperboard,
   FileText,
@@ -21,7 +20,6 @@ import { BlockingCanvas } from "@/components/app/blocking-canvas";
 import { Inspector } from "@/components/app/inspector";
 import { OverheadPlan } from "@/components/app/overhead-plan";
 import { SidebarDock } from "@/components/app/sidebar-dock";
-import { ProductionAssistantDock } from "@/components/app/production-assistant-dock";
 import { ProductionDrawer } from "@/components/app/production-drawer";
 import { ScriptCoverageTimeline } from "@/components/app/script-coverage-timeline";
 import { formatTimecode } from "@/lib/timecode";
@@ -67,7 +65,7 @@ export function EditView() {
   const [playing, setPlaying] = useState(false);
   const [previewMuted, setPreviewMuted] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
-  const [dockTab, setDockTab] = useState<"excerpt" | "shot" | "copilot" | "book" | null>("excerpt");
+  const [dockTab, setDockTab] = useState<"excerpt" | "shot" | "book" | null>("excerpt");
   const [rebuildPrompt, setRebuildPrompt] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [message, setMessage] = useState("");
@@ -618,7 +616,6 @@ export function EditView() {
             tabs={[
               { id: "excerpt", label: "Cut", icon: Scissors },
               { id: "shot", label: "Shot", icon: Settings2 },
-              { id: "copilot", label: "Assistant", icon: Bot },
               { id: "book", label: "Book", icon: FileText },
             ]}
             activeTab={dockTab}
@@ -890,7 +887,6 @@ export function EditView() {
                 <Inspector embedded />
               </div>
             )}
-            {dockTab === "copilot" && shot && <ProductionAssistantDock shot={shot} />}
             {dockTab === "book" && <ProductionDrawer embedded />}
           </SidebarDock>
         )}

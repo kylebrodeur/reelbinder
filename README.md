@@ -39,7 +39,7 @@ Public product documentation lives in [`docs-site/`](docs-site/) and is publishe
 
 ## Public project downloads
 
-[The Bounty Hunter presentation-project page](https://docs.reelbinder.app/presentation-project/) lists the approved public starter planning archive and the rights boundary. The direct source-only [planning study](https://storage.googleapis.com/reelbinder-public-downloads/starter/bounty-hunter-planning-study.reelbinder.zip) contains screenplay, planning, and floor-plan reference material; the finished presentation Project and film media are not linked directly from this repository.
+[The Bounty Hunter presentation-project page](https://docs.reelbinder.app/presentation-project/) lists the approved public starter planning archive and the rights boundary. The direct source-only [planning study](https://storage.googleapis.com/reelbinder-public-downloads/starter/bounty-hunter-planning-study.reelbinder.zip) contains screenplay, planning, and floor-plan reference material. Next to it, the finished presentation study in [`public/demo/finished-presentation-project.reelbinder.zip`](public/demo/finished-presentation-project.reelbinder.zip) carries the locked 55.6-second final cut (17 picture excerpts, soundtrack baked into the film render) as a media-light archive whose film media downloads only after an explicit action in Render; the finished film bytes themselves are not linked directly from this repository.
 
 ## Planning study and rights
 

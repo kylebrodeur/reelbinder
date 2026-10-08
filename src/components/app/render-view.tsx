@@ -118,7 +118,7 @@ export async function uploadClipAssetAndPatch(
 }
 
 export function writeRenderRecovery(record: RenderRecovery): void {
-  sessionStorage.setItem(storageKey(record.localProjectId), JSON.stringify(record));
+  localStorage.setItem(storageKey(record.localProjectId), JSON.stringify(record));
 }
 
 export function persistRenderRecovery(
@@ -222,15 +222,15 @@ export function RenderView() {
   const [applied, setApplied] = useState(false);
   const [uploadingClips, setUploadingClips] = useState<Record<string, boolean>>({});
   const [layoutMode, setLayoutMode] = useState<"split" | "toggle">("split");
+  const [activeToggleTab, setActiveToggleTab] = useState<"deliverable" | "reference" | "stills">(
+    "deliverable",
+  );
+  const [preflightStatusChecked, setPreflightStatusChecked] = useState(false);
   const [finishedStudyManifest, setFinishedStudyManifest] = useState<FinishedStudyManifest | null>(null);
   const [finishedStudyError, setFinishedStudyError] = useState<string | null>(null);
   const [hydrating, setHydrating] = useState(false);
   const [hydrationProgress, setHydrationProgress] = useState<string>("");
   const [hydrationReceipt, setHydrationReceipt] = useState<FinishedStudyMediaReceipt | null>(null);
-  const [activeToggleTab, setActiveToggleTab] = useState<"deliverable" | "reference" | "stills">(
-    "deliverable",
-  );
-  const [preflightStatusChecked, setPreflightStatusChecked] = useState(false);
 
   const liveMounted = useRef(true);
   const liveProjectId = useRef(project.id);
@@ -400,7 +400,7 @@ export function RenderView() {
     setBusy(false);
     setApplied(false);
     try {
-      const record = readRenderRecovery(sessionStorage.getItem(storageKey(project.id)), project.id);
+      const record = readRenderRecovery(localStorage.getItem(storageKey(project.id)), project.id);
       setPending(record);
       if (record?.terminalError) setError(record.terminalError);
       else if (record && !record.result) void resolve(record);

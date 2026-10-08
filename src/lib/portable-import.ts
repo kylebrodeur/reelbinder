@@ -234,19 +234,27 @@ export async function fetchArchiveFromUrl(
   };
 }
 
+interface FilePickerFileHandle {
+  getFile(): Promise<File>;
+}
+
+interface FilePickerWindow extends Window {
+  showOpenFilePicker(options?: unknown): Promise<FilePickerFileHandle[]>;
+}
+
+function isFilePickerWindow(w: Window): w is FilePickerWindow {
+  return "showOpenFilePicker" in w && typeof (w as Record<string, unknown>).showOpenFilePicker === "function";
+}
+
 /**
  * Attempts to use the browser File System Access API where available.
  * Returns null if the picker is cancelled or unsupported.
  */
 export async function pickDeviceArchiveFile(): Promise<File | null> {
-  if (typeof window !== "undefined" && "showOpenFilePicker" in window) {
+  if (typeof window !== "undefined" && isFilePickerWindow(window)) {
     try {
-      // SAFETY: showOpenFilePicker is a browser-native API where available
-      const [handle] = await (
-        window as unknown as {
-          showOpenFilePicker: (opts: unknown) => Promise<[{ getFile: () => Promise<File> }]>;
-        }
-      ).showOpenFilePicker({
+      // SAFETY: showOpenFilePicker is checked via isFilePickerWindow guard
+      const [handle] = await window.showOpenFilePicker({
         multiple: false,
         types: [
           {

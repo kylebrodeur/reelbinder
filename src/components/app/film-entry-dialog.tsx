@@ -240,7 +240,7 @@ export function FilmEntryDialog({ open, onOpenChange }: { open: boolean; onOpenC
       if (jobId) { receiveDraft(await waitForCinemaJob<ScriptDraft>(jobId)); return; }
       if (!request.current) {
         const connection = (await getCinemaConnections()).find((item) => item.provider === "google-cloud");
-        if (!connection) throw new Error("Open Connections and save your Google Cloud Express key first.");
+        if (!connection) throw new Error("Open Connections and authorize Google Cloud first.");
         request.current = { kind: "script", connectionId: connection.connectionId, idempotencyKey: crypto.randomUUID(), input: { idea: idea.trim(), direction: direction.trim() } };
       }
       receiveDraft(await submitCinemaJob<ScriptDraft>(request.current, (id) => {

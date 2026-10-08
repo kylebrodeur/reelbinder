@@ -68,7 +68,7 @@ export function RenderControl({ timeline }: { timeline: EditTimeline }) {
 
   const persist = useCallback((record: RenderRecovery) => {
     // A request is durable before POST /jobs. Retrying reuses these exact inputs/key.
-    sessionStorage.setItem(storageKey(record.localProjectId), JSON.stringify(record));
+    localStorage.setItem(storageKey(record.localProjectId), JSON.stringify(record));
     if (live.current.mounted && live.current.id === record.localProjectId) setPending(record);
   }, []);
 
@@ -150,7 +150,7 @@ export function RenderControl({ timeline }: { timeline: EditTimeline }) {
     setBusy(false);
     setApplied(false);
     try {
-      const record = readRenderRecovery(sessionStorage.getItem(storageKey(project.id)), project.id);
+      const record = readRenderRecovery(localStorage.getItem(storageKey(project.id)), project.id);
       setPending(record);
       if (record?.terminalError) setError(record.terminalError);
       else if (record && !record.result) void resolve(record);

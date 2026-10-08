@@ -44,6 +44,8 @@ def test_validate_ui_actions_accepts_unknown_input():
 def test_auto_executable_tools_frozenset_contains_only_expected_names():
     assert AUTO_EXECUTABLE_TOOLS == {
         "get_studio_state",
+        "get_production_checks",
+        "search_parallel",
         "get_script_outline",
         "get_shot",
         "get_overhead_state",

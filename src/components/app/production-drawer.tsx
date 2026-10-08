@@ -1,4 +1,5 @@
 import { CastEditor } from "@/components/app/cast-editor";
+import { DirectReviewBridge } from "@/components/app/direct-review-bridge";
 import { ProductionCatalog } from "@/components/app/production-item-editor";
 import { useState } from "react";
 import {
@@ -79,6 +80,7 @@ export function ProductionDrawer({
           </TabsContent>
           <TabsContent value="cut" className="space-y-3">
             <WorldFields />
+            <DirectReviewBridge projectTitle={project.name} />
             {project.cutUrl ? (
               <div className="overflow-hidden rounded-md border border-border">
                 <iframe

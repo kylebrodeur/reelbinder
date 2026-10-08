@@ -22,6 +22,24 @@ function fail(error: string): ToolFailure { return { ok: false, error }; }
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/** Short, deterministic revision token for the read tools' stale-guard. The
+ * full project fingerprint is far too large to echo back through the Page
+ * Agent's accumulating tool-result history (it was bloating the completion
+ * request until the deadline); a 64-bit FNV token keeps the guard bounded and
+ * still catches a changed project with negligible collision risk for a guard.
+ */
+function projectRevisionToken(project: Project): string {
+  const raw = projectFingerprint(project);
+  let h1 = 0x811c9dc5;
+  let h2 = 0x01000193;
+  for (let i = 0; i < raw.length; i++) {
+    const c = raw.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0;
+    h2 = Math.imul(h2 ^ c, 0x1000193) >>> 0;
+  }
+  return `${raw.length.toString(16)}-${h1.toString(16).padStart(8, "0")}${h2.toString(16).padStart(8, "0")}`;
+}
 function isFailure(value: unknown): value is ToolFailure {
   return isObject(value) && value.ok === false && typeof value.error === "string";
 }
@@ -100,7 +118,7 @@ function readFrame(args: Record<string, unknown>): ProductionToolExecution {
     version: 1,
     projectId: project.id,
     shotId,
-    revision: projectFingerprint(project),
+    revision: projectRevisionToken(project),
     frame: {
       frameUrlPresent: Boolean(shot.frameUrl),
       frameKind: shot.frameKind,
@@ -339,7 +357,13 @@ function stringArray(value: unknown, field: string, max = 500, allowEmpty = true
 
 function guardProject(args: Record<string, unknown>, project: Project): ToolFailure | null {
   if (args.expectedProjectId !== project.id) return fail("expectedProjectId does not match the current project.");
-  if (args.expectedRevision !== projectFingerprint(project)) return fail("The project changed since this operation was prepared. Read the current state and retry.");
+  // The Page Agent may echo the revision as a JSON number; the guard compares
+  // serialized project fingerprints (strings), so numeric tokens are coerced
+  // before the equality check. Any mismatch still fails the stale-guard error.
+  const expectedRevision = typeof args.expectedRevision === "number" && Number.isFinite(args.expectedRevision)
+    ? String(args.expectedRevision)
+    : args.expectedRevision;
+  if (expectedRevision !== projectRevisionToken(project)) return fail("The project changed since this operation was prepared. Read the current state and retry.");
   return null;
 }
 
@@ -352,7 +376,7 @@ function readCut(): ProductionToolExecution {
   return result({
     version: 1,
     projectId: project.id,
-    revision: projectFingerprint(project),
+    revision: projectRevisionToken(project),
     timelineInitialized: Boolean(project.timeline.initialized),
     shots: project.shots.slice(0, 500).map((shot) => ({
       id: shot.id,
