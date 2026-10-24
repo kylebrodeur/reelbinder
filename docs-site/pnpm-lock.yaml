@@ -6,9 +6,6 @@ importers:
   .:
     configDependencies: {}
     packageManagerDependencies:
-      '@pnpm/exe':
-        specifier: 12.3.4
-        version: 12.3.4
       pnpm:
         specifier: 12.3.4
         version: 12.3.4
@@ -59,11 +56,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@pnpm/exe@12.3.4':
-    resolution: {integrity: sha512-Rq7JokWAyYF9IFfn8zofB/q2AgnZlmoMuH5fMHB2+Ta61I9aD7sNm+woZpx6iH+5vb38chdSoYRvOtSqlH72YQ==}
-    engines: {node: '>=18.*'}
-    hasBin: true
-
   pnpm@12.3.4:
     resolution: {integrity: sha512-lhqkH7B32joEpEHZ+OFevAyW2o73ELLrZ7+e58sGEOq9SPH9hfUc/+c4RnhfoPh8VqOocqHYk/hEZ0G1zORUVw==}
     engines: {node: '>=18.*'}
@@ -95,17 +87,6 @@ snapshots:
   '@pnpm/exe.win32-x64@12.3.4':
     optional: true
 
-  '@pnpm/exe@12.3.4':
-    optionalDependencies:
-      '@pnpm/exe.darwin-arm64': 12.3.4
-      '@pnpm/exe.darwin-x64': 12.3.4
-      '@pnpm/exe.linux-arm64': 12.3.4
-      '@pnpm/exe.linux-arm64-musl': 12.3.4
-      '@pnpm/exe.linux-x64': 12.3.4
-      '@pnpm/exe.linux-x64-musl': 12.3.4
-      '@pnpm/exe.win32-arm64': 12.3.4
-      '@pnpm/exe.win32-x64': 12.3.4
-
   pnpm@12.3.4:
     optionalDependencies:
       '@pnpm/exe.darwin-arm64': 12.3.4
@@ -129,8 +110,8 @@ importers:
   .:
     dependencies:
       '@umami/shiso':
-        specifier: 1.13.0
-        version: 1.13.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rollup@4.63.1)
+        specifier: 1.19.0
+        version: 1.19.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rollup@4.63.1)
       react:
         specifier: 19.2.8
         version: 19.2.8
@@ -1086,8 +1067,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@umami/shiso@1.13.0':
-    resolution: {integrity: sha512-JKQsTWAh1a9e3E35d9y1vL11FtXXBBS0Wi5+diQFR5l1SeucIqwWRGaYoIbm6ewePSLhvezkx8+QycyNlqxHoQ==}
+  '@umami/shiso@1.19.0':
+    resolution: {integrity: sha512-ItU0VVnvkCPzagCQvqIvPc51T92txhP+0UXvdm89U8mtjx90eMY4is3kkvx9Oz6VwvNTXa4pBNUvgc7AcpCQIA==}
     engines: {node: ^20.19.0 || >=22.12.0}
     hasBin: true
     peerDependencies:
@@ -3011,7 +2992,7 @@ snapshots:
   '@typescript/typescript-win32-x64@7.0.2':
     optional: true
 
-  '@umami/shiso@1.13.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rollup@4.63.1)':
+  '@umami/shiso@1.19.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)(rollup@4.63.1)':
     dependencies:
       '@base-ui/react': 1.8.0(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@fontsource-variable/inter': 5.3.0
