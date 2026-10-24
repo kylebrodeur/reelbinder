@@ -11,7 +11,7 @@
     "preview": "python3 -m http.server 8767 --bind 127.0.0.1 --directory dist/client"
   },
   "dependencies": {
-    "@umami/shiso": "1.13.0",
+    "@umami/shiso": "1.19.0",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
