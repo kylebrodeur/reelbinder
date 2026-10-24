@@ -1,0 +1,52 @@
+# The dependency updates for ReelBinder.
+#
+# This file exists because Dependabot was running a `uv` job in
+# /backend, and /backend has no dependency manifest at all: it holds
+# two Python source files and nothing else. The job failed on every
+# run with "dependency_file_not_found" and "No files found in
+# /backend", and it produced no update while it did.
+#
+# The cause was a STALE dependency graph. The graph still had Python
+# packages (Pillow, PyJWT, cryptography) recorded against /backend,
+# from a time when that directory carried a Python manifest, so
+# Dependabot kept a security-update job there. The graph is
+# regenerated from the repository's manifests, and the repository has
+# no Python manifest now.
+#
+# So the config below declares the ecosystem and the directory
+# EXPLICITLY. A declared configuration replaces the graph's
+# guesswork, and the `uv` job in a directory with no manifest stops
+# existing.
+#
+# The two directories here are the ones that hold a dependency
+# manifest. `backend/`, `server/`, `src/`, `docs/`, `public/`, and
+# `scripts/` have none, so they are not scanned.
+#
+# The two managers, and why they differ:
+#
+# - The ROOT is npm. The README's install is `npm ci`, the root
+#   package.json carries no `packageManager` field, and
+#   `package-lock.json` is the lockfile the root's scripts use. The
+#   root also carries a `pnpm-lock.yaml`, which is a LEFTOVER from
+#   before the root moved to npm: it is older than
+#   `package-lock.json`, and nothing installs from it. Dependabot is
+#   pointed at npm for the root, which is the manager that is real.
+# - The DOCS SITE is pnpm. Its package.json declares
+#   `packageManager: pnpm@12.3.4` and it has its own
+#   `pnpm-lock.yaml`, and the docs workflow installs it with
+#   `pnpm install --frozen-lockfile`.
+
+version: 2
+
+updates:
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: npm
+    directory: "/docs-site"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
